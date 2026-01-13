@@ -5,6 +5,12 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 
+
+
+// CODIGO DE PRUEBA PARA ESPIAR USUARIO 4444 EN GRANDSTREAM
+// Mas que nada para ver los nombres de los campos y ver como se llaman
+// para luego hacer modificaciones o leer datos especificos
+
 class TestGrandstreamUser extends Command
 {
     protected $signature = 'grandstream:test-user';

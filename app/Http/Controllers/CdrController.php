@@ -60,9 +60,9 @@ class CdrController extends Controller
     public function syncCDRs()
     {
         // 1. CONFIGURACIÓN
-        $url      = 'https://10.36.1.10:8443/cdrapi';
-        $usuario  = 'cdrapi';
-        $password = '123api'; // <--- ¡Confirma que esta sea la clave real!
+        $url      = 'https://10.36.1.10:8443/cdrapi'; // IP API
+        $usuario  = 'cdrapi'; // Usuario API
+        $password = '123api'; // Contraseña API
 
         // ==========================================================
         // LÓGICA DE SINCRONIZACIÓN INCREMENTAL
@@ -118,7 +118,7 @@ class CdrController extends Controller
 
                     Call::updateOrCreate(
                         [
-                            'unique_id' => $cdr['uniqueid'], // Clave para no duplicar
+                            'unique_id' => $cdr['uniqueid'], // Clave para no duplicar los datos de las llamadas
                         ],
                         [
                             'start_time'    => $cdr['start'],
@@ -148,7 +148,7 @@ class CdrController extends Controller
         }
     }
     // ==========================================
-    // MÉTODO 3: GENERAR PDF 📄
+    // MÉTODO 3: GENERAR PDF 
     // ==========================================
     public function descargarPDF(Request $request)
     {

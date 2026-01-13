@@ -5,6 +5,12 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 
+
+// CODIGO DE PRUEBA PARA ACTUALIZAR USUARIO 4444 EN GRANDSTREAM
+// Filtrando datos complejos para evitar errores en la actualización
+// Básicamente es un Update que solo cambia el nombre que tiene registrado en la central
+// Aun asi no dejo posiblemnte por falta de permisos de la central
+
 class UpdateUser4444 extends Command
 {
     protected $signature = 'grandstream:update-4444';
@@ -17,7 +23,7 @@ class UpdateUser4444 extends Command
         // --- CONFIGURACIÓN ---
         $url     = 'https://10.36.1.10:8443/cdrapi';
         $usuario = 'cdrapi'; 
-        $clave   = '123api'; // <--- ¡PON TU CLAVE AQUÍ!
+        $clave   = '123api'; 
 
         try {
             // ==========================================
@@ -62,7 +68,7 @@ class UpdateUser4444 extends Command
             }
 
             // ==========================================
-            // PASO 3: LIMPIEZA Y UPDATE (La Magia)
+            // PASO 3: LIMPIEZA Y UPDATE 
             // ==========================================
             $nuevoNombre = 'PRUEBA FINAL API';
             $this->comment("3. Limpiando arrays y estableciendo nombre: '{$nuevoNombre}'...");

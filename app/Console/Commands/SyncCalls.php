@@ -17,12 +17,13 @@ class SyncCalls extends Command
 
     public function handle()
     {
-        ini_set('memory_limit', '1024M');
+        ini_set('memory_limit', '1024M'); // Aumentar límite de memoria si es necesario
         $year = $this->option('year');
         $startDate = Carbon::createFromDate($year, 1, 1);
         $now = Carbon::now();
 
         $this->info("Iniciando sincronización... (Año: $year)");
+        // Recorremos mes a mes
 
         while ($startDate->lessThanOrEqualTo($now)) {
             

@@ -16,7 +16,7 @@ use App\Http\Controllers\AuthController;
 // ==========================================
 
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-// Le decimos: "Permite máximo 5 intentos por 1 minuto".
+// Le decimos: "Permite máximo 10 intentos por 1 minuto".
 Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:10,1') 
     ->name('iniciar-sesion');

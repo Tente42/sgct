@@ -15,10 +15,14 @@ class SyncExtensions extends Command
     {
         $this->info(" Iniciando protocolo de autenticación (Challenge/Login)...");
 
+
+        // ESTO POR AHORA QUEDA ASÍ, PERO NO SE ESTA USANDO ESTA PARTE DEL CÓDIGO
+        // esto es basicamente pedir la lista de extensiones a la central telefónica
+        // pero no las esta tirando correctamente, por eso por ahora no se usa
         // CONFIGURACIÓN
-        $url     = 'https://10.36.1.10:7110/api';
+        $url     = 'https://10.36.1.10:7110/api'; // IP API
         $usuario = 'cdrapi';       // El usuario que creaste para la API
-        $clave   = '123api';    // <--- ¡Verifica que esta sea la clave!
+        $clave   = '123api';    // La clave de ese usuario
 
         try {
             // ==========================================

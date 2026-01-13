@@ -14,9 +14,9 @@ class AuthController extends Controller
 
     // Procesa los datos
     public function login(Request $request) {
-        // 1. Validamos que llegue un 'name' (Usuario) en vez de 'email'
+        // 1. Validamos que llegue un 'name' (Usuario) y 'password'
         $credentials = $request->validate([
-            'name' => ['required', 'string'], // <--- CAMBIO AQUÍ: Ahora pedimos name
+            'name' => ['required', 'string'], 
             'password' => ['required'],
         ]);
 
@@ -31,7 +31,7 @@ class AuthController extends Controller
 
         // 3. Si falla, devolvemos error
         return back()->withErrors([
-            'name' => 'Usuario o contraseña incorrectos.', // <--- CAMBIO AQUÍ: El error va asociado al campo name
+            'name' => 'Usuario o contraseña incorrectos.', 
         ]);
     }
 
