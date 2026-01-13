@@ -37,5 +37,6 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/sync', [CdrController::class, 'syncCDRs'])->name('cdr.sync');
     Route::get('/export-pdf', [CdrController::class, 'descargarPDF'])->name('cdr.pdf');
     Route::post('/extension/update', [ExtensionController::class, 'update'])->name('extension.update');
+    Route::get('/exportar-excel', [App\Http\Controllers\CdrController::class, 'exportarExcel'])->name('calls.export');
 
 });

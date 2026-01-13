@@ -153,6 +153,9 @@
                             title="Descargar PDF">
                         <i class="bi bi-file-earmark-pdf-fill"></i>
                     </button>
+                    <a href="{{ route('calls.export', request()->all()) }}" class="btn btn-success ms-2">
+                        <i class="bi bi-file-earmark-excel"></i> Excel
+                    </a>
 
                     <a href="{{ url('/') }}" class="btn btn-outline-secondary" title="Limpiar">
                         <i class="bi bi-arrow-counterclockwise"></i>

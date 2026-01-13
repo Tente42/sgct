@@ -8,6 +8,8 @@ use App\Models\Call;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Barryvdh\DomPDF\Facade\Pdf;
+use App\Exports\CallsExport;
+use Maatwebsite\Excel\Facades\Excel;
 
 class CdrController extends Controller
 {
@@ -187,5 +189,19 @@ class CdrController extends Controller
 
         // F. DESCARGAR
         return $pdf->download('Reporte_Llamadas_' . date('dmY_His') . '.pdf');
+    }
+    public function exportarExcel(\Illuminate\Http\Request $request)
+    {
+        // Capturamos los filtros de la URL
+        $filtros = [
+            'fecha_inicio' => $request->get('fecha_inicio'),
+            'fecha_fin'    => $request->get('fecha_fin'),
+            'anexo'        => $request->get('anexo'),
+        ];
+
+        // Nombre del archivo: reporte_2026-01-13.xlsx
+        $nombreArchivo = 'reporte_' . date('Y-m-d') . '.xlsx';
+
+        return Excel::download(new CallsExport($filtros), $nombreArchivo);
     }
 }
