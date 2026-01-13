@@ -34,5 +34,10 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+    'grandstream' => [
+    'host' => env('GRANDSTREAM_HOST'),
+    'user' => env('GRANDSTREAM_USER'),
+    'pass' => env('GRANDSTREAM_PASS'),
+],
 
 ];

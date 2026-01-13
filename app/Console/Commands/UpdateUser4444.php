@@ -21,9 +21,9 @@ class UpdateUser4444 extends Command
         $this->info(" Iniciando actualización QUIRÚRGICA para el usuario 4444...");
 
         // --- CONFIGURACIÓN ---
-        $url     = 'https://10.36.1.10:8443/cdrapi';
-        $usuario = 'cdrapi'; 
-        $clave   = '123api'; 
+        $url      = env('GRANDSTREAM_HOST') . '/cdrapi'; // Estos datos se tienen que modificar en el .env
+        $usuario  = env('GRANDSTREAM_USER');
+        $clave = env('GRANDSTREAM_PASS'); 
 
         try {
             // ==========================================

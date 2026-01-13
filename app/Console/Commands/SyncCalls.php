@@ -23,7 +23,7 @@ class SyncCalls extends Command
         $now = Carbon::now();
 
         $this->info("Iniciando sincronización... (Año: $year)");
-        // Recorremos mes a mes
+        //
 
         while ($startDate->lessThanOrEqualTo($now)) {
             

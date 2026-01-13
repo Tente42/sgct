@@ -60,9 +60,10 @@ class CdrController extends Controller
     public function syncCDRs()
     {
         // 1. CONFIGURACIÓN
-        $url      = 'https://10.36.1.10:8443/cdrapi'; // IP API
-        $usuario  = 'cdrapi'; // Usuario API
-        $password = '123api'; // Contraseña API
+        // En lugar de llamar a env(), llamas a la configuración
+        $url      = config('services.grandstream.host') . '/cdrapi';
+        $usuario  = config('services.grandstream.user');
+        $password = config('services.grandstream.pass');
 
         // ==========================================================
         // LÓGICA DE SINCRONIZACIÓN INCREMENTAL
