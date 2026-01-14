@@ -204,4 +204,37 @@ class CdrController extends Controller
 
         return Excel::download(new CallsExport($filtros), $nombreArchivo);
     }
+
+    // ==========================================
+    // MÉTODO 4: GRÁFICOS
+    // ==========================================
+    public function showCharts()
+    {
+        // Gráfico de Torta: Llamadas por estado
+        $callsByDisposition = Call::query()
+            ->selectRaw('disposition, count(*) as total')
+            ->groupBy('disposition')
+            ->pluck('total', 'disposition');
+
+        $pieChartLabels = $callsByDisposition->keys();
+        $pieChartData = $callsByDisposition->values();
+
+        // Gráfico de Líneas: Llamadas en los últimos 30 días
+        $callsPerDay = Call::query()
+            ->where('start_time', '>=', Carbon::now()->subDays(30))
+            ->selectRaw('DATE(start_time) as fecha, count(*) as total')
+            ->groupBy('fecha')
+            ->orderBy('fecha', 'asc')
+            ->get();
+
+        $lineChartLabels = $callsPerDay->pluck('fecha');
+        $lineChartData = $callsPerDay->pluck('total');
+
+        return view('graficos', compact(
+            'pieChartLabels',
+            'pieChartData',
+            'lineChartLabels',
+            'lineChartData'
+        ));
+    }
 }
