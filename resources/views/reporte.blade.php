@@ -92,6 +92,7 @@
                         </div>
                     </div>
 
+
                     <div class="md:col-span-1">
                         <label class="block font-bold text-sm text-green-600">Valor Minuto:</label>
                         <div class="flex mt-1">
@@ -106,9 +107,8 @@
                             <i class="fas fa-calculator"></i> Calcular
                         </button>
                         
-                        <button type="submit" 
-                                formaction="{{ route('cdr.pdf') }}" 
-                                formtarget="_blank" 
+                        <button type="button" 
+                                onclick="pedirTituloYDescargar()" 
                                 class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded" 
                                 title="Descargar PDF">
                             <i class="fas fa-file-pdf"></i> PDF
@@ -121,6 +121,7 @@
                         <a href="{{ url('/') }}" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded text-center" title="Limpiar">
                             <i class="fas fa-undo"></i>
                         </a>
+                        <input type="hidden" name="titulo" id="titulo_pdf" value="{{ $titulo ?? 'Reporte de Llamadas' }}">
                     </div>
                 </form>
             </div>
@@ -222,6 +223,22 @@
     <script>
         function editarNombre(extension, nombreActual) {
             window.dispatchEvent(new CustomEvent('open-modal', { detail: { extension, nombreActual } }));
+        }
+
+        function pedirTituloYDescargar() {
+            const form = document.querySelector('form[action="{{ url('/') }}"]');
+            const inputTitulo = document.getElementById('titulo_pdf');
+            const tituloActual = inputTitulo ? inputTitulo.value : 'Reporte de Llamadas';
+            const nuevoTitulo = prompt('Título del reporte', tituloActual);
+            if (nuevoTitulo === null) return; // cancelado
+            if (inputTitulo) inputTitulo.value = (nuevoTitulo.trim() || tituloActual);
+            const oldAction = form.action;
+            const oldTarget = form.target;
+            form.action = "{{ route('cdr.pdf') }}";
+            form.target = "_blank";
+            form.submit();
+            form.action = oldAction;
+            form.target = oldTarget;
         }
     </script>
     @endpush

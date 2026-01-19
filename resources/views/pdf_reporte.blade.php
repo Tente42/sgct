@@ -9,6 +9,7 @@
             font-size: 12px;
             color: #333;
         }
+        .small { font-size: 10px; }
         .header {
             text-align: center;
             margin-bottom: 20px;
@@ -74,8 +75,19 @@
 <body>
 
     <div class="header">
-        <h1>Informe de Gestión Telefónica</h1>
-        <p>Generado el: {{ now()->format('d/m/Y H:i') }}</p>
+        <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+                <td style="text-align: left; vertical-align: top; border: none;">
+                    <span class="small">Central IP: {{ $ip_central }}</span>
+                </td>
+            </tr>
+            <tr>
+                <td style="text-align: center; border: none;">
+                    <h1>{{ $titulo }}</h1>
+                    <p>Generado el: {{ now()->format('d/m/Y H:i') }}</p>
+                </td>
+            </tr>
+        </table>
     </div>
 
     <table class="resumen-table">

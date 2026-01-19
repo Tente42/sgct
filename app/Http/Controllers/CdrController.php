@@ -22,6 +22,7 @@ class CdrController extends Controller
         $fechaFin    = $request->input('fecha_fin', Carbon::now()->format('Y-m-d'));
         $anexo       = $request->input('anexo');
         $tarifa      = $request->input('tarifa', 50); 
+        $titulo      = $request->input('titulo', 'Reporte de Llamadas');
 
         $query = Call::whereBetween('start_time', [
             $fechaInicio . ' 00:00:00', 
@@ -52,7 +53,7 @@ class CdrController extends Controller
 
         return view('reporte', compact(
             'llamadas', 'fechaInicio', 'fechaFin', 'anexo', 'totalLlamadas', 
-            'totalSegundos', 'totalPagar', 'minutosFacturables', 'tarifa', 'labels', 'data'
+            'totalSegundos', 'totalPagar', 'minutosFacturables', 'tarifa', 'labels', 'data', 'titulo'
         ));
     }
 
@@ -227,9 +228,13 @@ class CdrController extends Controller
         $minutosFacturables = ceil($totalSegundos / 60);
         $totalPagar = $minutosFacturables * $tarifa;
 
+        $titulo = $request->input('titulo', 'Reporte de Llamadas');
+        $ip_central = '10.36.1.10';
+
         $pdf = Pdf::loadView('pdf_reporte', compact(
             'llamadas', 'fechaInicio', 'fechaFin', 'anexo', 
-            'totalLlamadas', 'totalPagar', 'minutosFacturables', 'tarifa'
+            'totalLlamadas', 'totalPagar', 'minutosFacturables', 'tarifa',
+            'titulo', 'ip_central'
         ));
 
         return $pdf->download('Reporte_Llamadas_' . date('dmY_His') . '.pdf');
