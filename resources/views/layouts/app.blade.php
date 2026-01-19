@@ -15,27 +15,25 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
-<body class="h-full font-sans antialiased bg-gray-50" x-data="{ sidebarOpen: false }">
-    <div class="flex h-full overflow-hidden">
-        <!-- Sidebar - Parte Izquierda -->
-        @include('layouts.sidebar')
+<body class="font-sans antialiased bg-gray-50" x-data="{ sidebarOpen: false }">
+    <!-- Sidebar - Parte Izquierda -->
+    @include('layouts.sidebar')
 
-        <!-- Main content - Ocupa el resto del espacio -->
-        <div class="flex-1 flex flex-col overflow-hidden">
-            <!-- Page Heading -->
-            @isset($header)
-                <header class="bg-white shadow-sm flex-shrink-0">
-                    <div class="w-full py-6 px-4 sm:px-6 lg:px-8">
-                        {{ $header }}
-                    </div>
-                </header>
-            @endisset
+    <!-- Main content - Con margen para el sidebar fijo -->
+    <div class="flex flex-col min-h-screen" style="margin-left: 16rem;">
+        <!-- Page Heading -->
+        @isset($header)
+            <header class="bg-white shadow-sm flex-shrink-0">
+                <div class="w-full py-6 px-4 sm:px-6 lg:px-8">
+                    {{ $header }}
+                </div>
+            </header>
+        @endisset
 
-            <!-- Page Content -->
-            <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50">
-                {{ $slot }}
-            </main>
-        </div>
+        <!-- Page Content -->
+        <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-50">
+            {{ $slot }}
+        </main>
     </div>
     @stack('scripts')
 </body>

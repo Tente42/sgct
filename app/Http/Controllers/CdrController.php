@@ -14,7 +14,7 @@ use Maatwebsite\Excel\Facades\Excel;
 class CdrController extends Controller
 {
     // ==========================================
-    // MÉTODO 1: DASHBOARD
+    // MÉTODO 1: DASHBOARD (Sin cambios)
     // ==========================================
     public function index(Request $request)
     {
@@ -57,111 +57,160 @@ class CdrController extends Controller
     }
 
     // ==========================================
-    // MÉTODO 2: SINCRONIZAR (DIGEST AUTH) 
+    // MÉTODO 2: SINCRONIZAR INTELIGENTE (WEB)
     // ==========================================
     public function syncCDRs()
     {
         // 1. CONFIGURACIÓN
-        // En lugar de llamar a env(), llamas a la configuración
         $url      = config('services.grandstream.host') . '/cdrapi';
         $usuario  = config('services.grandstream.user');
         $password = config('services.grandstream.pass');
 
-        // ==========================================================
-        // LÓGICA DE SINCRONIZACIÓN INCREMENTAL
-        // ==========================================================
-        
-        // 1. Buscamos la fecha de la llamada más reciente en la base de datos
+        // 2. DEFINIR RANGO DE TIEMPO INCREMENTAL
         $ultimaLlamada = Call::orderBy('start_time', 'desc')->first();
 
         if ($ultimaLlamada) {
-            // CASO A: Ya estan los datos almacenados.
-            // Buscamos desde la última fecha registrada - 1 hora.
-            // ¿Por qué restar 1 hora? Como "colchón de seguridad" para asegurar 
-            // que no perdemos ninguna llamada que haya entrado justo en el límite.
+            // "Colchón" de 1 hora para asegurar que no perdemos llamadas en el borde
             $start = Carbon::parse($ultimaLlamada->start_time)->subHour();
         } else {
-            // CASO B: Es la primera vez (Base de datos vacía).
-            // Traemos el historial del último mes.
+            // Primera vez: últimos 30 días
             $start = now()->subDays(30);
         }
 
-        $end = now(); // Hasta el momento presente
+        $end = now(); 
 
         try {
-            // 2. CONECTAR
+            // 3. CONECTAR A LA API
             $response = Http::withDigestAuth($usuario, $password)
-                ->timeout(30)
+                ->timeout(60) // Aumentamos timeout por si hay mucha data procesando
                 ->withoutVerifying()
                 ->get($url, [
                     'format'    => 'JSON',
                     'startTime' => $start->format('Y-m-d\TH:i:s'),
                     'endTime'   => $end->format('Y-m-d\TH:i:s'),
+                    'minDur'    => 0 // Traer todo para luego filtrar inteligentemente
                 ]);
 
             if ($response->successful()) {
                 $data = $response->json();
                 
-                // Si conecta pero no hay llamadas
                 if (!isset($data['cdr_root']) || empty($data['cdr_root'])) {
-                    return back()->with('success', 'Conexión exitosa, pero no hay llamadas nuevas en los últimos 30 días.');
+                    return back()->with('success', 'Conexión exitosa. No hay llamadas nuevas.');
                 }
 
                 $calls = $data['cdr_root'];
-                $contador = 0;
+                $contadorNuevas = 0;
+                $contadorActualizadas = 0;
 
-                // 3. GUARDAR EN BD
-                foreach ($calls as $cdr) {
+                // 4. PROCESAMIENTO ROBUSTO (Igual que en consola)
+                foreach ($calls as $cdrPacket) {
                     
-                    // VALIDACIÓN DE SEGURIDAD:
-                    // Si la llamada viene corrupta sin ID, la ignoramos.
-                    if (!isset($cdr['uniqueid'])) {
+                    // A. RECOLECTAR TODOS LOS TRAMOS (Recursividad)
+                    $validSegments = $this->collectAllSegments($cdrPacket);
+
+                    if (empty($validSegments)) {
                         continue;
                     }
 
-                    Call::updateOrCreate(
-                        [
-                            'unique_id' => $cdr['uniqueid'], // Clave para no duplicar los datos de las llamadas
-                        ],
-                        [
-                            'start_time'    => $cdr['start'],
-                            'source'        => $cdr['src'],
-                            'destination'   => $cdr['dst'],
-                            'duration'      => $cdr['duration'],
-                            'billsec'       => $cdr['billsec'] ?? 0,
-                            'disposition'   => $cdr['disposition'],
-                            'caller_name'   => $cdr['caller_name'] ?? null,
-                            'recording_file'=> $cdr['recordfiles'] ?? null, 
-                        ]
-                    );
-                    $contador++;
+                    // B. FILTRO DE LIMPIEZA
+                    // 1. Quitar fantasmas sin estado
+                    $validSegments = array_filter($validSegments, function($seg) {
+                        return !empty($seg['disposition']); 
+                    });
+
+                    // 2. Si alguien contestó en este grupo, borramos los intentos fallidos (0 seg)
+                    $huboExito = false;
+                    foreach ($validSegments as $seg) {
+                        if (($seg['billsec'] ?? 0) > 0) { 
+                            $huboExito = true; 
+                            break; 
+                        }
+                    }
+
+                    if ($huboExito) {
+                        $validSegments = array_filter($validSegments, function($seg) {
+                            return ($seg['billsec'] ?? 0) > 0;
+                        });
+                    }
+
+                    // C. GUARDAR EN BASE DE DATOS
+                    foreach ($validSegments as $record) {
+                        
+                        // Generación de ID Inteligente (Prioridad AcctId)
+                        if (!empty($record['acctid'])) {
+                            $uniqueKey = $record['acctid'];
+                        } else {
+                            $baseId = $record['uniqueid'] ?? md5($record['start']);
+                            $uniqueKey = $baseId . '_' . ($record['dst'] ?? 'x');
+                        }
+
+                        $call = Call::updateOrCreate(
+                            ['unique_id' => $uniqueKey], 
+                            [
+                                'start_time'    => $record['start'],
+                                'source'        => $record['src'] ?? 'Desconocido',
+                                'destination'   => $record['dst'] ?? 'Desconocido',
+                                'duration'      => $record['duration'] ?? 0,
+                                'billsec'       => $record['billsec'] ?? 0,
+                                'disposition'   => $record['disposition'] ?? 'UNKNOWN',
+                                'caller_name'   => $record['caller_name'] ?? null,
+                                'recording_file'=> $record['recordfiles'] ?? null,
+                            ]
+                        );
+
+                        if ($call->wasRecentlyCreated) {
+                            $contadorNuevas++;
+                        } else {
+                            $contadorActualizadas++;
+                        }
+                    }
                 }
 
-                return back()->with('success', "¡Sincronización Exitosa! Se procesaron {$contador} llamadas.");
+                return back()->with('success', "Sincronización Inteligente: {$contadorNuevas} nuevas, {$contadorActualizadas} actualizadas.");
 
             } else {
-                // Si la central rechaza la conexión
-                return back()->with('error', 'Error Central: ' . $response->status());
+                return back()->with('error', 'Error Central HTTP: ' . $response->status());
             }
 
         } catch (\Exception $e) {
-            Log::error("Error Sync: " . $e->getMessage());
-            // Devolvemos el error en pantalla
-            return back()->with('error', 'Ocurrió un error técnico: ' . $e->getMessage());
+            Log::error("Error Sync Web: " . $e->getMessage());
+            return back()->with('error', 'Error técnico: ' . $e->getMessage());
         }
     }
+
     // ==========================================
-    // MÉTODO 3: GENERAR PDF 
+    // HELPER: RECOLECTOR RECURSIVO (Privado)
+    // ==========================================
+    private function collectAllSegments($cdrNode)
+    {
+        $collected = [];
+
+        // 1. Analizar el nodo actual
+        if (is_array($cdrNode) && isset($cdrNode['start']) && !empty($cdrNode['start'])) {
+            $collected[] = $cdrNode;
+        }
+
+        // 2. Buscar recursivamente en hijos (sub_cdr, main_cdr)
+        foreach ($cdrNode as $key => $value) {
+            if (is_array($value) && (str_starts_with($key, 'sub_cdr') || $key === 'main_cdr')) {
+                $children = $this->collectAllSegments($value);
+                $collected = array_merge($collected, $children);
+            }
+        }
+
+        return $collected;
+    }
+
+    // ==========================================
+    // MÉTODO 3: PDF 
     // ==========================================
     public function descargarPDF(Request $request)
     {
-        // A. RECUPERAR LOS MISMOS FILTROS QUE EL DASHBOARD
         $fechaInicio = $request->input('fecha_inicio', Carbon::now()->format('Y-m-d')); 
         $fechaFin    = $request->input('fecha_fin', Carbon::now()->format('Y-m-d'));
         $anexo       = $request->input('anexo');
         $tarifa      = $request->input('tarifa', 50); 
 
-        // B. PREPARAR LA CONSULTA
         $query = Call::whereBetween('start_time', [
             $fechaInicio . ' 00:00:00', 
             $fechaFin . ' 23:59:59'
@@ -171,47 +220,51 @@ class CdrController extends Controller
             $query->where('source', $anexo);
         }
 
-        // C. OBTENER DATOS (Sin paginar, queremos todo el reporte)
         $llamadas = $query->orderBy('start_time', 'asc')->get();
 
-        // D. CALCULAR TOTALES PARA EL ENCABEZADO
         $totalLlamadas = $llamadas->count();
         $totalSegundos = $llamadas->sum('billsec');
         $minutosFacturables = ceil($totalSegundos / 60);
         $totalPagar = $minutosFacturables * $tarifa;
 
-        // E. GENERAR EL PDF
-        // Usaremos una vista nueva llamada 'pdf_reporte'
         $pdf = Pdf::loadView('pdf_reporte', compact(
             'llamadas', 'fechaInicio', 'fechaFin', 'anexo', 
             'totalLlamadas', 'totalPagar', 'minutosFacturables', 'tarifa'
         ));
 
-        // F. DESCARGAR
         return $pdf->download('Reporte_Llamadas_' . date('dmY_His') . '.pdf');
     }
+
+    // ==========================================
+    // MÉTODO 4: EXCEL & GRÁFICOS 
+    // ==========================================
     public function exportarExcel(\Illuminate\Http\Request $request)
     {
-        // Capturamos los filtros de la URL
         $filtros = [
             'fecha_inicio' => $request->get('fecha_inicio'),
             'fecha_fin'    => $request->get('fecha_fin'),
             'anexo'        => $request->get('anexo'),
         ];
-
-        // Nombre del archivo: reporte_2026-01-13.xlsx
         $nombreArchivo = 'reporte_' . date('Y-m-d') . '.xlsx';
-
         return Excel::download(new CallsExport($filtros), $nombreArchivo);
     }
 
-    // ==========================================
-    // MÉTODO 4: GRÁFICOS
-    // ==========================================
-    public function showCharts()
+    public function showCharts(Request $request)
     {
-        // Gráfico de Torta: Llamadas por estado
-        $callsByDisposition = Call::query()
+        $fechaInicio = $request->input('fecha_inicio', Carbon::now()->subDays(30)->format('Y-m-d')); 
+        $fechaFin    = $request->input('fecha_fin', Carbon::now()->format('Y-m-d'));
+        $anexo       = $request->input('anexo');
+
+        $query = Call::whereBetween('start_time', [
+            $fechaInicio . ' 00:00:00', 
+            $fechaFin . ' 23:59:59'
+        ]);
+
+        if ($anexo) {
+            $query->where('source', $anexo);
+        }
+
+        $callsByDisposition = (clone $query)
             ->selectRaw('disposition, count(*) as total')
             ->groupBy('disposition')
             ->pluck('total', 'disposition');
@@ -219,9 +272,7 @@ class CdrController extends Controller
         $pieChartLabels = $callsByDisposition->keys();
         $pieChartData = $callsByDisposition->values();
 
-        // Gráfico de Líneas: Llamadas en los últimos 30 días
-        $callsPerDay = Call::query()
-            ->where('start_time', '>=', Carbon::now()->subDays(30))
+        $callsPerDay = (clone $query)
             ->selectRaw('DATE(start_time) as fecha, count(*) as total')
             ->groupBy('fecha')
             ->orderBy('fecha', 'asc')
@@ -231,10 +282,8 @@ class CdrController extends Controller
         $lineChartData = $callsPerDay->pluck('total');
 
         return view('graficos', compact(
-            'pieChartLabels',
-            'pieChartData',
-            'lineChartLabels',
-            'lineChartData'
+            'pieChartLabels', 'pieChartData', 'lineChartLabels', 'lineChartData',
+            'fechaInicio', 'fechaFin', 'anexo'
         ));
     }
 }

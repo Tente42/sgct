@@ -7,6 +7,13 @@ use App\Models\Extension;
 
 class ExtensionController extends Controller
 {
+    public function index()
+    {
+        $extensions = Extension::orderBy('extension', 'asc')->paginate(50);
+        
+        return view('configuracion', compact('extensions'));
+    }
+
     public function updateName(Request $request)
     {
         // Validamos

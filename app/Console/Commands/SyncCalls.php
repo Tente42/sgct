@@ -9,42 +9,39 @@ use App\Models\Call;
 
 class SyncCalls extends Command
 {
-    // Nombre del comando
-    protected $signature = 'calls:sync {--year=2023}';
-    
-    // Descripción
-    protected $description = 'Descarga historial de llamadas desde la central';
+    protected $signature = 'calls:sync {--year=2026}';
+    protected $description = 'Sincronizador Inteligente con Auto-Limpieza';
 
     public function handle()
     {
-        ini_set('memory_limit', '1024M'); // Aumentar límite de memoria si es necesario
+        ini_set('memory_limit', '1024M'); 
         $year = $this->option('year');
-        $startDate = Carbon::createFromDate($year, 1, 1);
+        
+        $startDate = Carbon::createFromDate($year, 1, 1)->startOfDay();
         $now = Carbon::now();
 
-        $this->info("Iniciando sincronización... (Año: $year)");
-        //
+        $this->info("============================================");
+        $this->info("  SINCRONIZADOR CON FILTRO DE LIMPIEZA");
+        $this->info("============================================");
 
         while ($startDate->lessThanOrEqualTo($now)) {
             
             $start = $startDate->copy()->startOfMonth();
-            $end = $startDate->copy()->endOfMonth();
-            
-            if ($end->isFuture()) $end = $now;
+            $end   = $startDate->copy()->endOfMonth();
+            if ($end->isFuture()) $end = $now->copy();
 
-            $this->line("Procesando: " . $start->format('Y-m-d'));
+            $this->line("📅 Consultando: " . $start->format('Y-m-d H:i') . " -> " . $end->format('Y-m-d H:i'));
 
             try {
-                // --- TU CONFIGURACIÓN (Verificada) ---
                 $url = 'https://10.36.1.10:8443/cdrapi';
                 
                 $response = Http::withDigestAuth('cdrapi', '123api')
-                    ->timeout(30)
-                    ->withoutVerifying()
+                    ->timeout(60)->withoutVerifying()
                     ->get($url, [
                         'format'    => 'JSON',
-                        'startTime' => $start->format('Y-m-d\TH:i:s'),
+                        'startTime' => $start->format('Y-m-d\TH:i:s'), 
                         'endTime'   => $end->format('Y-m-d\TH:i:s'),
+                        'minDur'    => 0 
                     ]);
 
                 if ($response->successful()) {
@@ -52,45 +49,118 @@ class SyncCalls extends Command
                     $calls = $data['cdr_root'] ?? [];
                     $count = count($calls);
 
-                    $this->info("   Recibidas: {$count}");
+                    $this->info("    Paquetes recibidos: {$count}");
 
                     if ($count > 0) {
                         $bar = $this->output->createProgressBar($count);
                         $bar->start();
+                        $nuevas = 0; $actualizadas = 0;
 
-                        foreach ($calls as $cdr) {
-                            // BLINDAJE: Si no tiene ID, saltar
-                            if (!isset($cdr['uniqueid'])) continue;
+                        foreach ($calls as $cdrPacket) {
+                            
+                            // 1. RECOLECTAR TODO
+                            $validSegments = $this->collectAllSegments($cdrPacket);
 
-                            Call::updateOrCreate(
-                                ['unique_id' => $cdr['uniqueid']],
-                                [
-                                    'start_time'    => $cdr['start'],
-                                    'source'        => $cdr['src'],
-                                    'destination'   => $cdr['dst'],
-                                    'duration'      => $cdr['duration'],
-                                    'billsec'       => $cdr['billsec'] ?? 0,
-                                    'disposition'   => $cdr['disposition'],
-                                    'caller_name'   => $cdr['caller_name'] ?? null,
-                                    'recording_file'=> $cdr['recordfiles'] ?? null,
-                                ]
-                            );
+                            if (empty($validSegments)) {
+                                continue;
+                            }
+
+                            // --- 2. FILTRO INTELIGENTE (LA MAGIA) ---
+                            
+                            // A. Eliminar registros "fantasmas" (main_cdr sin estado)
+                            // En tu debug vimos que main_cdr venía con disposition="" (vacio). Eso es basura.
+                            $validSegments = array_filter($validSegments, function($seg) {
+                                return !empty($seg['disposition']); 
+                            });
+
+                            // B. Si hubo ÉXITO, borrar los FALLOS
+                            // Verificamos si alguien contestó en este grupo
+                            $huboExito = false;
+                            foreach ($validSegments as $seg) {
+                                if (($seg['billsec'] ?? 0) > 0) { 
+                                    $huboExito = true; 
+                                    break; 
+                                }
+                            }
+
+                            // Si alguien contestó, filtramos y SOLO dejamos las contestadas
+                            // Así eliminamos la llamada de "0 segundos" que te molesta
+                            if ($huboExito) {
+                                $validSegments = array_filter($validSegments, function($seg) {
+                                    return ($seg['billsec'] ?? 0) > 0;
+                                });
+                            }
+
+                            // --- 3. GUARDAR LO QUE QUEDÓ ---
+                            foreach ($validSegments as $record) {
+                                
+                                // ID: Preferimos AcctId
+                                if (!empty($record['acctid'])) {
+                                    $uniqueKey = $record['acctid'];
+                                } else {
+                                    $baseId = $record['uniqueid'] ?? md5($record['start']);
+                                    $uniqueKey = $baseId . '_' . ($record['dst'] ?? 'x');
+                                }
+
+                                if (Call::where('unique_id', $uniqueKey)->exists()) {
+                                    $actualizadas++;
+                                } else {
+                                    $nuevas++;
+                                }
+
+                                Call::updateOrCreate(
+                                    ['unique_id' => $uniqueKey], 
+                                    [
+                                        'start_time'    => $record['start'],
+                                        'source'        => $record['src'] ?? 'Desconocido',
+                                        'destination'   => $record['dst'] ?? 'Desconocido',
+                                        'duration'      => $record['duration'] ?? 0,
+                                        'billsec'       => $record['billsec'] ?? 0,
+                                        'disposition'   => $record['disposition'] ?? 'UNKNOWN',
+                                        'caller_name'   => $record['caller_name'] ?? null,
+                                        'recording_file'=> $record['recordfiles'] ?? null,
+                                    ]
+                                );
+                            }
+
                             $bar->advance();
                         }
                         $bar->finish();
                         $this->newLine();
+                        $this->info("   📊 Registros DB: $nuevas Nuevos | $actualizadas Actualizados");
+                        $this->newLine();
                     }
                 } else {
-                    $this->error("   Error HTTP: " . $response->status());
+                    $this->error("    Error HTTP: " . $response->status());
                 }
             } catch (\Exception $e) {
-                $this->error("   Error: " . $e->getMessage());
+                $this->error("    Error: " . $e->getMessage());
             }
-
             $startDate->addMonth();
             sleep(1);
         }
-        
-        $this->info(" ¡Listo!");
+        $this->info(" ¡Sincronización Completa!");
+    }
+
+    private function collectAllSegments($cdrNode)
+    {
+        $collected = [];
+
+        // Analizar el nodo actual
+        if (is_array($cdrNode) && isset($cdrNode['start']) && !empty($cdrNode['start'])) {
+            // Recolectamos todo lo que tenga duración o estado (incluso 0 segundos por ahora)
+            // El filtro de arriba decidirá si lo borra o no.
+            $collected[] = $cdrNode;
+        }
+
+        // Buscar recursivamente
+        foreach ($cdrNode as $key => $value) {
+            if (is_array($value) && (str_starts_with($key, 'sub_cdr') || $key === 'main_cdr')) {
+                $children = $this->collectAllSegments($value);
+                $collected = array_merge($collected, $children);
+            }
+        }
+
+        return $collected;
     }
 }

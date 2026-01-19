@@ -33,6 +33,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/', [CdrController::class, 'index'])->name('home');
     Route::get('/dashboard', [CdrController::class, 'index'])->name('dashboard');
     Route::get('/graficos', [CdrController::class, 'showCharts'])->name('cdr.charts');
+    Route::get('/configuracion', [ExtensionController::class, 'index'])->name('extension.index');
 
     // Funciones del Sistema
     Route::get('/sync', [CdrController::class, 'syncCDRs'])->name('cdr.sync');
