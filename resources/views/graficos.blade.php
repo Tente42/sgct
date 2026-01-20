@@ -7,12 +7,23 @@
 
     <div class="w-full px-4 sm:px-6 lg:px-8 py-6">
 
+        <!-- Uptime - Esquina Superior Derecha -->
+        <div class="flex justify-end" style="margin-bottom: 0.5rem;">
+            <div class="bg-white shadow rounded-lg px-6 py-2 flex items-center" style="gap: 1.5rem;">
+                <i class="fa fa-clock text-blue-500 text-xl"></i>
+                <div>
+                    <div class="text-xs text-gray-500 uppercase">Uptime</div>
+                    <div class="text-lg font-semibold text-gray-800">{{ $systemData['uptime'] ?? 'N/A' }}</div>
+                </div>
+            </div>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             
             {{-- Gráfico de Torta --}}
             <div class="bg-white shadow-sm p-4">
                 <h6 class="font-bold text-blue-500 mb-3"><i class="fas fa-chart-pie me-1"></i> Llamadas por Estado</h6>
-                <div style="height: 300px;">
+                <div class="chart-container">
                     <canvas id="graficoTorta"></canvas>
                 </div>
             </div>
@@ -20,7 +31,7 @@
             {{-- Gráfico de Líneas --}}
             <div class="bg-white shadow-sm p-4">
                 <h6 class="font-bold text-blue-500 mb-3"><i class="fas fa-chart-line me-1"></i> Tendencia de Llamadas</h6>
-                <div style="height: 300px;">
+                <div class="chart-container">
                     <canvas id="graficoLineas"></canvas>
                 </div>
             </div>

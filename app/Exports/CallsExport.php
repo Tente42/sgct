@@ -34,13 +34,9 @@ class CallsExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             $query->whereDate('start_time', '<=', $this->filtros['fecha_fin']);
         }
 
-        // 3. Filtro por Anexo (Origen o Destino)
+        // 3. Filtro por Anexo (SOLO llamadas hechas por ese anexo - comparación exacta)
         if (!empty($this->filtros['anexo'])) {
-            $val = $this->filtros['anexo'];
-            $query->where(function($q) use ($val) {
-                $q->where('source', 'like', "%{$val}%")
-                  ->orWhere('destination', 'like', "%{$val}%");
-            });
+            $query->where('source', $this->filtros['anexo']);
         }
 
         // Ordenamos: Las más recientes primero
@@ -67,7 +63,7 @@ class CallsExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             $call->start_time,
             $call->source,
             $call->destination,
-            $call->duration,
+            $call->billsec, // Tiempo hablado (facturado), no duration
             $call->cost, // Dejamos el número limpio para que Excel pueda sumar
             $call->disposition,
         ];

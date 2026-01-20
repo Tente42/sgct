@@ -28,12 +28,12 @@ class ImportarExtensiones extends Command
         $modo = $target ? "QUIRÚRGICO ($target)" : "MASIVO INTELIGENTE";
 
         $this->info("============================================");
-        $this->info(" 🧠 SINCRONIZADOR V7 - MODO: $modo");
+        $this->info("  SINCRONIZADOR V7 - MODO: $modo");
         $this->info("============================================");
 
         $cookie = $this->hacerLogin();
         if (!$cookie) {
-            $this->error("❌ Error de Login.");
+            $this->error(" Error de Login.");
             return;
         }
 
@@ -52,7 +52,7 @@ class ImportarExtensiones extends Command
             }
         } else {
             // Modo Masivo
-            $this->line("📡 Descargando lista maestra...");
+            $this->line(" Descargando lista maestra...");
             $response = Http::withoutVerifying()->timeout(30)->post($this->apiUrl, [
                 'request' => ['action' => 'listUser', 'cookie' => $cookie]
             ]);
@@ -74,7 +74,7 @@ class ImportarExtensiones extends Command
         $total = count($listaUsuarios);
         if ($total == 0) { $this->error("❌ Lista vacía."); return; }
 
-        $this->info("📋 Analizando {$total} usuarios...");
+        $this->info(" Analizando {$total} usuarios...");
         
         $bar = $this->output->createProgressBar($total);
         $bar->start();
@@ -152,13 +152,13 @@ class ImportarExtensiones extends Command
         $this->newLine(2);
         
         // REPORTE FINAL
-        $this->info("🏁 RESUMEN FINAL:");
+        $this->info(" RESUMEN FINAL:");
         $this->table(
             ['Estado', 'Cantidad'],
             [
-                ['💤 Sin Cambios (Ignorados)', $sinCambios],
-                ['🔄 Actualizados (Detectado cambio)', $actualizados],
-                ['✨ Nuevos Creados', $nuevos],
+                [' Sin Cambios (Ignorados)', $sinCambios],
+                [' Actualizados (Detectado cambio)', $actualizados],
+                [' Nuevos Creados', $nuevos],
                 ['TOTAL', $total]
             ]
         );

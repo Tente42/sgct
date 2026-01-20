@@ -8,6 +8,30 @@
     }
 }
 
+/* Chart sizing utilities to prevent infinite growth */
+@layer utilities {
+    .chart-container {
+        position: relative;
+        height: 300px;
+        max-height: 400px;
+    }
+
+    .chart-container canvas {
+        height: 100% !important;
+        width: 100% !important;
+        display: block;
+    }
+
+    .chart-fixed {
+        height: 100px !important;
+        max-height: 100px !important;
+        width: 100px !important;
+        max-width: 100px !important;
+        display: block;
+        margin: 0 auto;
+    }
+}
+
 /* Animaciones para transiciones de pantalla */
 @keyframes fadeIn {
     from {

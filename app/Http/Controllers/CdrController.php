@@ -286,9 +286,17 @@ class CdrController extends Controller
         $lineChartLabels = $callsPerDay->pluck('fecha');
         $lineChartData = $callsPerDay->pluck('total');
 
+        // Datos del sistema (pueden venir de API o archivo de sistema)
+        $systemData = [
+            'cpu' => rand(10, 90),    // Placeholder - reemplazar con datos reales
+            'memory' => rand(20, 80),
+            'disk' => rand(30, 70),
+            'uptime' => '3 days, 4 hours' // Placeholder
+        ];
+
         return view('graficos', compact(
             'pieChartLabels', 'pieChartData', 'lineChartLabels', 'lineChartData',
-            'fechaInicio', 'fechaFin', 'anexo'
+            'fechaInicio', 'fechaFin', 'anexo', 'systemData'
         ));
     }
 }
