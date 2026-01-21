@@ -22,3 +22,10 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Documentation files (may contain sensitive API info)
+*.pdf
+
+# SQLite databases
+*.sqlite
+*.sqlite-journal
