@@ -2,8 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
+use App\Models\User;
 
 class UserSeeder extends Seeder
 {
@@ -12,19 +13,21 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
-        // 1. Usuario Administrador
-    \App\Models\User::create([
-        'name' => 'Administrador',
-        'email' => 'admin@empresa.com',
-        'password' => \Illuminate\Support\Facades\Hash::make('admin123'), // <--- Cambia la clave aquí
-       // 'role' => 'admin', // Opcional, si quieres distinguir permisos luego
-    ]);
+        // 1. Crear Usuario Administrador
+        // Lee los datos desde config/services.php -> admins
+        User::create([
+            'name'     => config('services.admins.name'),
+            'email'    => config('services.admins.email'),
+            'password' => Hash::make(config('services.admins.pass')),
+            // 'role' => 'admin', // Descomentar si implementas roles a futuro
+        ]);
 
-    // 2. Usuario Trabajador
-    \App\Models\User::create([
-        'name' => 'Usuario',
-        'email' => 'usuario@empresa.com',
-        'password' => \Illuminate\Support\Facades\Hash::make('usuario123'), // <--- Cambia la clave aquí
-    ]);
+        // 2. Crear Usuario Trabajador
+        // Lee los datos desde config/services.php -> users
+        User::create([
+            'name'     => config('services.users.name'),
+            'email'    => config('services.users.email'),
+            'password' => Hash::make(config('services.users.pass')),
+        ]);
     }
 }

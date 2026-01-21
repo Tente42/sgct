@@ -41,6 +41,17 @@ return [
         'pass' => env('GRANDSTREAM_PASS'), // Contraseña del usuario API
         'verify_ssl' => env('GRANDSTREAM_VERIFY_SSL', false), // Verificar SSL (true/false)
     ],
+    'admins' => [
+        'name'  => env('ADMIN_USER'),
+        'email' => env('ADMIN_MAIL'),
+        'pass'  => env('ADMIN_PASS'),
+    ],
+
+    'users' => [
+        'name'  => env('USUARIO_USER'),
+        'email' => env('USUARIO_MAIL'),
+        'pass'  => env('USUARIO_PASS'),
+    ],
 
 
 ];
