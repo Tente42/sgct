@@ -36,7 +36,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/configuracion', [ExtensionController::class, 'index'])->name('extension.index');
 
     // Funciones del Sistema
-    Route::get('/sync', [CdrController::class, 'syncCDRs'])->name('cdr.sync');
+    Route::post('/sync', [CdrController::class, 'syncCDRs'])->name('cdr.sync');
     Route::get('/export-pdf', [CdrController::class, 'descargarPDF'])->name('cdr.pdf');
     Route::post('/extension/update', [ExtensionController::class, 'update'])->name('extension.update');
     Route::get('/exportar-excel', [App\Http\Controllers\CdrController::class, 'exportarExcel'])->name('calls.export');

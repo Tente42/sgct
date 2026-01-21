@@ -8,31 +8,12 @@ use Illuminate\Support\Facades\Http; // Importante para las peticiones
 
 class ExtensionController extends Controller
 {
-    // Credenciales de la Central (Ajusta si cambian)
-    private $pbxIp = '10.36.1.10';
-    private $pbxUser = 'cdrapi';
-    private $pbxPass = '123api';
-    private $pbxPort = '7110'; // Puerto de gestión API
-
-    public function index(Request $request)
-    {
-        $anexo = $request->input('anexo');
-
-        $extensions = Extension::query()
-            ->when($anexo, fn ($q) => $q->where('extension', 'like', "%{$anexo}%"))
-            ->orderBy('extension', 'asc')
-            ->paginate(50)
-            ->appends($request->only('anexo'));
-        
-        return view('configuracion', compact('extensions', 'anexo'));
-    }
-
-    // --- AQUÍ ESTÁ LA MAGIA DE LA SINCRONIZACIÓN ---
+    
     public function update(Request $request)
     {
         // 1. Validación de datos
         $request->validate([
-            'extension' => 'required|string',
+            'extension' => 'required|string', 
             'first_name' => 'nullable|string|max:255',
             'last_name' => 'nullable|string|max:255',
             'email' => 'nullable|email|max:255',
@@ -49,8 +30,12 @@ class ExtensionController extends Controller
 
         // 2. FASE DE CONEXIÓN A GRANDSTREAM
         // Intentamos obtener cookie de sesión
-        $apiUrl = "https://{$this->pbxIp}:{$this->pbxPort}/api";
-        $cookie = $this->getCookie($apiUrl, $this->pbxUser, $this->pbxPass);
+        $ip = config('services.grandstream.host');
+        $port = config('services.grandstream.port', '7110');
+        $user = config('services.grandstream.user');
+        $pass = config('services.grandstream.pass');
+        $apiUrl = "https://{$ip}:{$port}/api";
+        $cookie = $this->getCookie($apiUrl, $user, $pass);
 
         if (!$cookie) {
             return back()->with('error', ' Error: No se pudo conectar con la Central Telefónica. Verifique la red.');
@@ -72,7 +57,7 @@ class ExtensionController extends Controller
         }
 
         // 4. PREPARAR DATOS PARA LA API
-        // A. Permisos (Traducción de tu BD a la API)
+        // A. Permisos (Traducción de BD a la API)
         $permisoApi = 'internal'; 
         if ($request->permission == 'International') $permisoApi = 'internal-local-national-international';
         elseif ($request->permission == 'National')  $permisoApi = 'internal-local-national';
@@ -84,7 +69,7 @@ class ExtensionController extends Controller
 
         // 5. ENVIAR CAMBIOS A LA CENTRAL
         
-        // Petición 1: Datos de Identidad (Nombre, Email)
+        // Petición 1: Datos de Identidad (Nombre, Apellido, Email, Teléfono)
         $respIdentity = $this->connectApi($apiUrl, 'updateUser', [
             'user_id' => (int)$userId,
             'user_name' => $request->extension,
@@ -114,7 +99,7 @@ class ExtensionController extends Controller
                 'last_name' => $request->last_name,
                 'email' => $request->email,
                 'phone' => $request->phone,
-                'permission' => $request->permission, // Guardamos el valor "bonito" (Internal)
+                'permission' => $request->permission, 
                 'do_not_disturb' => $request->boolean('do_not_disturb'),
                 'max_contacts' => $request->max_contacts,
             ]);
@@ -143,8 +128,19 @@ class ExtensionController extends Controller
         return back()->with('success', 'Nombre actualizado correctamente');
     }
 
+    public function index(Request $request)
+    {
+        $anexo = $request->input('anexo');
+        $extensions = \App\Models\Extension::query()
+            ->when($anexo, fn ($q) => $q->where('extension', 'like', "%{$anexo}%"))
+            ->orderBy('extension', 'asc')
+            ->paginate(50)
+            ->appends($request->only('anexo'));
+        return view('configuracion', compact('extensions', 'anexo'));
+    }
+
     // ==========================================
-    //  MÉTODOS PRIVADOS DE CONEXIÓN (HELPERS)
+    //  MÉTODOS PRIVADOS DE CONEXIÓN 
     // ==========================================
 
     private function connectApi($url, $action, $params = [], $cookie = null)

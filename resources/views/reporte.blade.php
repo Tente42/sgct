@@ -13,10 +13,13 @@
                 <span class="text-gray-500 text-sm">Generado: {{ date('d/m/Y H:i') }}</span>
             </div>
             
-            <a href="{{ route('cdr.sync') }}" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded shadow-md"
-               onclick="this.innerHTML='<i class=\'fas fa-sync fa-spin\'></i> Buscando...'; this.classList.add('opacity-50', 'cursor-not-allowed');">
-                <i class="fas fa-cloud-download-alt"></i> Sincronizar Ahora
-            </a>
+            <form action="{{ route('cdr.sync') }}" method="POST" class="inline">
+                @csrf
+                <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded shadow-md"
+                   onclick="this.innerHTML='<i class=\'fas fa-sync fa-spin\'></i> Buscando...'; this.classList.add('opacity-50', 'cursor-not-allowed'); this.disabled=true; this.form.submit();">
+                    <i class="fas fa-cloud-download-alt"></i> Sincronizar Ahora
+                </button>
+            </form>
         </div>
 
         @if(session('success'))

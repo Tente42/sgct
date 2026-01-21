@@ -58,13 +58,14 @@ class CdrController extends Controller
     }
 
     // ==========================================
-    // MÉTODO 2: SINCRONIZAR INTELIGENTE (WEB)
+    // MÉTODO 2: SINCRONIZAR (WEB)
     // ==========================================
     public function syncCDRs()
     {
-        // 1. CONFIGURACIÓN
-        $url      = config('services.grandstream.host') . '/cdrapi';
-        $usuario  = config('services.grandstream.user');
+        // 1. CONFIGURACIÓN - Puerto 8443 con DigestAuth para CDR
+        $ip = config('services.grandstream.host');
+        $url = "https://{$ip}:8443/cdrapi";
+        $usuario = config('services.grandstream.user');
         $password = config('services.grandstream.pass');
 
         // 2. DEFINIR RANGO DE TIEMPO INCREMENTAL
@@ -81,15 +82,15 @@ class CdrController extends Controller
         $end = now(); 
 
         try {
-            // 3. CONECTAR A LA API
+            // 3. CONECTAR A LA API CON DIGEST AUTH (Puerto 8443)
             $response = Http::withDigestAuth($usuario, $password)
-                ->timeout(60) // Aumentamos timeout por si hay mucha data procesando
+                ->timeout(60)
                 ->withoutVerifying()
                 ->get($url, [
-                    'format'    => 'JSON',
+                    'format' => 'JSON',
                     'startTime' => $start->format('Y-m-d\TH:i:s'),
-                    'endTime'   => $end->format('Y-m-d\TH:i:s'),
-                    'minDur'    => 0 // Traer todo para luego filtrar inteligentemente
+                    'endTime' => $end->format('Y-m-d\TH:i:s'),
+                    'minDur' => 0
                 ]);
 
             if ($response->successful()) {
@@ -103,7 +104,7 @@ class CdrController extends Controller
                 $contadorNuevas = 0;
                 $contadorActualizadas = 0;
 
-                // 4. PROCESAMIENTO ROBUSTO (Igual que en consola)
+                // 4. PROCESAMIENTO 
                 foreach ($calls as $cdrPacket) {
                     
                     // A. RECOLECTAR TODOS LOS TRAMOS (Recursividad)
@@ -167,7 +168,7 @@ class CdrController extends Controller
                     }
                 }
 
-                return back()->with('success', "Sincronización Inteligente: {$contadorNuevas} nuevas, {$contadorActualizadas} actualizadas.");
+                return back()->with('success', "Sincronización: {$contadorNuevas} nuevas, {$contadorActualizadas} actualizadas.");
 
             } else {
                 return back()->with('error', 'Error Central HTTP: ' . $response->status());
@@ -229,7 +230,7 @@ class CdrController extends Controller
         $totalPagar = $minutosFacturables * $tarifa;
 
         $titulo = $request->input('titulo', 'Reporte de Llamadas');
-        $ip_central = '10.36.1.10';
+        $ip_central = config('services.grandstream.host');
 
         $pdf = Pdf::loadView('pdf_reporte', compact(
             'llamadas', 'fechaInicio', 'fechaFin', 'anexo', 
@@ -286,13 +287,9 @@ class CdrController extends Controller
         $lineChartLabels = $callsPerDay->pluck('fecha');
         $lineChartData = $callsPerDay->pluck('total');
 
-        // Datos del sistema (pueden venir de API o archivo de sistema)
-        $systemData = [
-            'cpu' => rand(10, 90),    // Placeholder - reemplazar con datos reales
-            'memory' => rand(20, 80),
-            'disk' => rand(30, 70),
-            'uptime' => '3 days, 4 hours' // Placeholder
-        ];
+        // Obtener uptime del sistema usando EstadoCentral
+        $estadoCentral = new \App\Http\Controllers\EstadoCentral();
+        $systemData = $estadoCentral->getSystemData();
 
         return view('graficos', compact(
             'pieChartLabels', 'pieChartData', 'lineChartLabels', 'lineChartData',

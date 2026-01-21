@@ -11,18 +11,26 @@ class SyncExtensions extends Command
     protected $signature = 'extensions:sync';
     protected $description = 'Sincroniza usuarios usando Challenge -> Login -> Cookie';
 
+    protected $ip;
+    protected $user;
+    protected $pass;
+    protected $port;
+
+    public function __construct()
+    {
+        parent::__construct();
+        $this->ip = config('services.grandstream.host');
+        $this->user = config('services.grandstream.user');
+        $this->pass = config('services.grandstream.pass');
+        $this->port = config('services.grandstream.port', '7110');
+    }
+
     public function handle()
     {
         $this->info(" Iniciando protocolo de autenticación (Challenge/Login)...");
-
-
-        // ESTO POR AHORA QUEDA ASÍ, PERO NO SE ESTA USANDO ESTA PARTE DEL CÓDIGO
-        // esto es basicamente pedir la lista de extensiones a la central telefónica
-        // pero no las esta tirando correctamente, por eso por ahora no se usa
-        // CONFIGURACIÓN
-        $url     = 'https://10.36.1.10:7110/api'; // IP API
-        $usuario = 'cdrapi';       // El usuario que creaste para la API
-        $clave   = '123api';    // La clave de ese usuario
+        $url     = 'https://'.$this->ip.':'.$this->port.'/api'; // IP API
+        $usuario = $this->user;       // El usuario que creaste para la API
+        $clave   = $this->pass;    // La clave de ese usuario
 
         try {
             // ==========================================

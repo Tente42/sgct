@@ -9,7 +9,7 @@ class Call extends Model
 {
     use HasFactory;
 
-    // --- AGREGA ESTA LISTA DE PERMISOS ---
+    // --- LISTA DE PERMISOS ---
     protected $fillable = [
         'unique_id',      // ID único de la central
         'start_time',     // Hora inicio

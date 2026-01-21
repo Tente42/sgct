@@ -12,6 +12,21 @@ class SyncCalls extends Command
     protected $signature = 'calls:sync {--year=2026}';
     protected $description = 'Sincronizador Inteligente con Auto-Limpieza';
 
+    protected $ip;
+    protected $user;
+    protected $pass;
+    protected $cdrUrl;
+
+    public function __construct()
+    {
+        parent::__construct();
+        $this->ip = config('services.grandstream.host'); // IP o dominio del PBX Grandstream
+        $this->user = config('services.grandstream.user'); // Usuario con permisos de API   
+        $this->pass = config('services.grandstream.pass'); // Contraseña del usuario API
+        // Puerto 8443 con DigestAuth para CDR
+        $this->cdrUrl = "https://{$this->ip}:8443/cdrapi";
+    }
+
     public function handle()
     {
         ini_set('memory_limit', '1024M'); 
@@ -23,6 +38,7 @@ class SyncCalls extends Command
         $this->info("============================================");
         $this->info("  SINCRONIZADOR CON FILTRO DE LIMPIEZA");
         $this->info("============================================");
+        $this->info("  URL: {$this->cdrUrl}");
 
         while ($startDate->lessThanOrEqualTo($now)) {
             
@@ -30,14 +46,14 @@ class SyncCalls extends Command
             $end   = $startDate->copy()->endOfMonth();
             if ($end->isFuture()) $end = $now->copy();
 
-            $this->line("📅 Consultando: " . $start->format('Y-m-d H:i') . " -> " . $end->format('Y-m-d H:i'));
+            $this->line(" Consultando: " . $start->format('Y-m-d H:i') . " -> " . $end->format('Y-m-d H:i'));
 
             try {
-                $url = 'https://10.36.1.10:8443/cdrapi';
-                
-                $response = Http::withDigestAuth('cdrapi', '123api')
-                    ->timeout(60)->withoutVerifying()
-                    ->get($url, [
+                // Usar DigestAuth en puerto 8443
+                $response = Http::withDigestAuth($this->user, $this->pass)
+                    ->timeout(60)
+                    ->withoutVerifying()
+                    ->get($this->cdrUrl, [
                         'format'    => 'JSON',
                         'startTime' => $start->format('Y-m-d\TH:i:s'), 
                         'endTime'   => $end->format('Y-m-d\TH:i:s'),
@@ -65,10 +81,10 @@ class SyncCalls extends Command
                                 continue;
                             }
 
-                            // --- 2. FILTRO INTELIGENTE (LA MAGIA) ---
+                            // --- 2. FILTRO ---
                             
                             // A. Eliminar registros "fantasmas" (main_cdr sin estado)
-                            // En tu debug vimos que main_cdr venía con disposition="" (vacio). Eso es basura.
+                            // En el debug vi que main_cdr venía con disposition="" (vacio). Eso es basura.
                             $validSegments = array_filter($validSegments, function($seg) {
                                 return !empty($seg['disposition']); 
                             });
@@ -127,7 +143,7 @@ class SyncCalls extends Command
                         }
                         $bar->finish();
                         $this->newLine();
-                        $this->info("   📊 Registros DB: $nuevas Nuevos | $actualizadas Actualizados");
+                        $this->info("    Registros DB: $nuevas Nuevos | $actualizadas Actualizados");
                         $this->newLine();
                     }
                 } else {
@@ -148,7 +164,7 @@ class SyncCalls extends Command
 
         // Analizar el nodo actual
         if (is_array($cdrNode) && isset($cdrNode['start']) && !empty($cdrNode['start'])) {
-            // Recolectamos todo lo que tenga duración o estado (incluso 0 segundos por ahora)
+            // Recolectamos todo lo que tenga duración o estado (incluso 0 segundos)
             // El filtro de arriba decidirá si lo borra o no.
             $collected[] = $cdrNode;
         }

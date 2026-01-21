@@ -10,16 +10,16 @@ trait GrandstreamTrait
 
     private function connectApi($action, $params = [], $cookie = null)
     {
-        // Usamos env() para leer del archivo .env
-        $ip = env('GRANDSTREAM_IP');
-        $port = env('GRANDSTREAM_PORT', '7110');
+        // Usamos config() para leer de config/services.php
+        $ip = config('services.grandstream.host');
+        $port = config('services.grandstream.port', '7110');
         $url = "https://{$ip}:{$port}/api";
 
         try {
             // Auto-login si no hay cookie
             if (!$cookie && $action !== 'login' && $action !== 'challenge') {
-                $user = env('GRANDSTREAM_USER');
-                $pass = env('GRANDSTREAM_PASS');
+                $user = config('services.grandstream.user');
+                $pass = config('services.grandstream.pass');
                 $cookie = $this->getCookie($url, $user, $pass);
                 
                 if (!$cookie) return ['status' => -99, 'response' => ['body' => 'Fallo Login Automático']];

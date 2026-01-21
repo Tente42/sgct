@@ -11,15 +11,19 @@ class ImportarExtensiones extends Command
     protected $signature = 'extensions:import {target? : La extensión específica a sincronizar}';
     protected $description = 'Sincroniza usuarios de forma inteligente (Solo guarda si hay cambios).';
 
-    protected $ip   = '10.36.1.10'; 
-    protected $user = 'cdrapi';
-    protected $pass = '123api';
+    protected $ip;
+    protected $user;
+    protected $pass;
     protected $apiUrl;
 
     public function __construct()
     {
         parent::__construct();
-        $this->apiUrl = "https://{$this->ip}:7110/api";
+        $this->ip = config('services.grandstream.host');
+        $this->user = config('services.grandstream.user');
+        $this->pass = config('services.grandstream.pass');
+        $port = config('services.grandstream.port', '7110');
+        $this->apiUrl = "https://{$this->ip}:{$port}/api";
     }
 
     public function handle()
@@ -28,7 +32,7 @@ class ImportarExtensiones extends Command
         $modo = $target ? "QUIRÚRGICO ($target)" : "MASIVO INTELIGENTE";
 
         $this->info("============================================");
-        $this->info("  SINCRONIZADOR V7 - MODO: $modo");
+        $this->info("  SINCRONIZADOR - MODO: $modo");
         $this->info("============================================");
 
         $cookie = $this->hacerLogin();
@@ -47,7 +51,7 @@ class ImportarExtensiones extends Command
                  $userDat = $userInfo['response']['user_name'] ?? $userInfo['response'][$target] ?? $userInfo['response'];
                  $listaUsuarios = [$userDat];
             } else {
-                $this->error("❌ Extensión no encontrada.");
+                $this->error(" Extensión no encontrada.");
                 return;
             }
         } else {
@@ -72,7 +76,7 @@ class ImportarExtensiones extends Command
         }
 
         $total = count($listaUsuarios);
-        if ($total == 0) { $this->error("❌ Lista vacía."); return; }
+        if ($total == 0) { $this->error(" Lista vacía."); return; }
 
         $this->info(" Analizando {$total} usuarios...");
         

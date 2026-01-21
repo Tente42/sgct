@@ -9,7 +9,22 @@ class Extension extends Model
 {
     use HasFactory;
 
-    // ESTA LÍNEA ES LA LLAVE MAESTRA
-    // Permite guardar cualquier campo en la base de datos sin errores de seguridad
-    protected $guarded = [];
+    // Campos permitidos para asignación masiva
+    protected $fillable = [
+        'extension',
+        'first_name',
+        'last_name',
+        'fullname',
+        'email',
+        'phone',
+        'permission',
+        'do_not_disturb',
+        'max_contacts',
+    ];
+
+    // Casting de tipos para campos específicos
+    protected $casts = [
+        'do_not_disturb' => 'boolean',
+        'max_contacts' => 'integer',
+    ];
 }
