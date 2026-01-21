@@ -1,59 +1,259 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 📞 Panel de Gestión de Llamadas - Grandstream UCM
 
 <p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
+  <img src="https://img.shields.io/badge/Laravel-11-FF2D20?style=for-the-badge&logo=laravel&logoColor=white" alt="Laravel 11">
+  <img src="https://img.shields.io/badge/PHP-8.2+-777BB4?style=for-the-badge&logo=php&logoColor=white" alt="PHP 8.2+">
+  <img src="https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind CSS">
+  <img src="https://img.shields.io/badge/Grandstream-UCM-0078D4?style=for-the-badge" alt="Grandstream UCM">
 </p>
 
-## About Laravel
+Panel de administración y monitoreo de llamadas para centrales telefónicas **Grandstream UCM**. Permite visualizar, filtrar, exportar y gestionar registros de llamadas (CDR) y extensiones de manera sencilla, segura y en tiempo real.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## ✨ Características
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- 📊 **Dashboard interactivo** con estadísticas de llamadas
+- 🔄 **Sincronización automática** de CDRs desde la central Grandstream
+- 👥 **Gestión de extensiones** con estado en tiempo real
+- 📈 **Gráficos y reportes** de llamadas entrantes, salientes y perdidas
+- 📥 **Exportación a Excel/PDF** de reportes personalizados
+- 🔐 **Autenticación segura** con roles de usuario
+- 🎨 **Interfaz moderna** con Tailwind CSS
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
+## 📋 Requisitos del Sistema
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+| Requisito | Versión Mínima |
+|-----------|----------------|
+| PHP | 8.2 o superior |
+| Composer | 2.x |
+| Node.js | 18.x o superior |
+| NPM | 9.x o superior |
+| MySQL | 8.0 o SQLite 3 |
+| Central Grandstream | UCM con API habilitada |
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+## 🚀 Instalación
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+### 1. Clonar el repositorio
 
-### Premium Partners
+```bash
+git clone https://github.com/tu-usuario/panel-llamadas.git
+cd panel-llamadas
+```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+### 2. Instalar dependencias de PHP
 
-## Contributing
+```bash
+composer install
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### 3. Instalar dependencias de Node.js
 
-## Code of Conduct
+```bash
+npm install
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### 4. Configurar el archivo de entorno
 
-## Security Vulnerabilities
+```bash
+cp .env.example .env
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### 5. Generar la clave de aplicación
 
-## License
+```bash
+php artisan key:generate
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### 6. Compilar assets (CSS/JS)
+
+```bash
+npm run build
+```
+
+---
+
+## ⚙️ Configuración del `.env`
+
+Edita el archivo `.env` con los valores correspondientes a tu entorno:
+
+### 🗄️ Base de Datos
+
+Para **MySQL**:
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=panel_llamadas
+DB_USERNAME=tu_usuario
+DB_PASSWORD=tu_contraseña
+```
+
+
+### 📞 Configuración de Grandstream UCM
+
+Estas variables son **obligatorias** para conectar con tu central telefónica:
+
+```env
+# IP o dominio de la central Grandstream
+GRANDSTREAM_IP=192.168.1.100
+
+# Puerto de la API (por defecto 7110)
+GRANDSTREAM_PORT=7110
+
+# Usuario con permisos de API en la central
+GRANDSTREAM_USER=api_user
+
+# Contraseña del usuario API
+GRANDSTREAM_PASS=tu_contraseña_api
+
+# Verificar SSL (false para certificados auto-firmados)
+GRANDSTREAM_VERIFY_SSL=false
+```
+
+> ⚠️ **Importante:** El usuario debe tener permisos de API habilitados en la central Grandstream UCM.
+
+### 👤 Credenciales del Seeder de Usuarios
+
+Configura los usuarios que se crearán al ejecutar el seeder:
+
+```env
+# Usuario Administrador
+ADMIN_USER=Administrador
+ADMIN_MAIL=admin@tuempresa.com
+ADMIN_PASS=contraseña_segura_admin
+
+# Usuario Regular
+USUARIO_USER=Usuario
+USUARIO_MAIL=usuario@tuempresa.com
+USUARIO_PASS=contraseña_segura_usuario
+```
+
+---
+
+## 🗃️ Base de Datos
+
+### Ejecutar migraciones
+
+```bash
+php artisan migrate
+```
+
+### Crear usuarios iniciales
+
+```bash
+php artisan db:seed --class=UserSeeder
+```
+
+Este comando creará los usuarios configurados en las variables de entorno (`ADMIN_*` y `USUARIO_*`).
+
+---
+
+## 🔧 Comandos Personalizados
+
+El panel incluye comandos Artisan para sincronización con la central Grandstream:
+
+### Sincronizar CDRs (Registros de Llamadas)
+
+```bash
+php artisan calls:sync
+```
+
+Opciones disponibles:
+```bash
+# Sincronizar un año específico
+php artisan calls:sync --year=2026
+```
+
+Este comando:
+- Conecta con la API de la central Grandstream
+- Descarga los registros de llamadas (CDR)
+- Almacena los datos en la base de datos local
+- Evita duplicados automáticamente
+
+### Sincronizar Extensiones
+
+```bash
+php artisan extensions:sync
+```
+
+Este comando:
+- Obtiene la lista de extensiones configuradas en la central
+- Sincroniza nombres, estados y configuraciones
+- Actualiza la información en tiempo real
+
+### Programar sincronización automática (Cron)
+
+Agrega al crontab del servidor:
+
+```bash
+* * * * * cd /ruta/al/proyecto && php artisan schedule:run >> /dev/null 2>&1
+```
+
+---
+
+## 🖥️ Ejecutar en Desarrollo
+
+```bash
+# Terminal 1: Servidor Laravel
+php artisan serve
+
+# Terminal 2: Compilación de assets en tiempo real
+npm run dev
+```
+
+Accede a la aplicación en: `http://localhost:8000`
+
+---
+
+## 📁 Estructura del Proyecto
+
+```
+├── app/
+│   ├── Console/Commands/     # Comandos Artisan personalizados
+│   │   ├── SyncCalls.php     # Sincronización de CDRs
+│   │   └── SyncExtensions.php # Sincronización de extensiones
+│   ├── Exports/              # Exportaciones Excel
+│   ├── Http/Controllers/     # Controladores
+│   ├── Models/               # Modelos Eloquent
+│   └── Traits/               # Traits reutilizables (GrandstreamTrait)
+├── config/
+│   └── services.php          # Configuración de servicios externos
+├── database/
+│   ├── migrations/           # Migraciones de BD
+│   └── seeders/              # Seeders de datos iniciales
+├── resources/
+│   └── views/                # Vistas Blade
+└── routes/
+    └── web.php               # Rutas de la aplicación
+```
+
+---
+
+## 🔒 Seguridad
+
+- Las credenciales sensibles se manejan exclusivamente mediante variables de entorno
+- El archivo `.env` está excluido del repositorio (`.gitignore`)
+- Las contraseñas se almacenan con hash Bcrypt
+- Protección CSRF en todos los formularios
+
+---
+
+
+## 📄 Licencia
+
+Este proyecto está bajo la Licencia MIT. Consulta el archivo [LICENSE](LICENSE) para más detalles.
+
+---
+
+## 📧 Soporte
+
+Si tienes preguntas o encuentras algún problema, abre un [Issue](../../issues) en el repositorio.
+
+---
+
+<p align="center">
+  Desarrollado con ❤️ usando <a href="https://laravel.com">Laravel</a>
+</p>
