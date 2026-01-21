@@ -9,39 +9,47 @@
 
 Panel de administración y monitoreo de llamadas para centrales telefónicas **Grandstream UCM**. Permite visualizar, filtrar, exportar y gestionar registros de llamadas (CDR) y extensiones de manera sencilla, segura y en tiempo real.
 
-## ✨ Características
+##  Características
 
-- 📊 **Dashboard interactivo** con estadísticas de llamadas
-- 🔄 **Sincronización automática** de CDRs desde la central Grandstream
-- 👥 **Gestión de extensiones** con estado en tiempo real
-- 📈 **Gráficos y reportes** de llamadas entrantes, salientes y perdidas
-- 📥 **Exportación a Excel/PDF** de reportes personalizados
-- 🔐 **Autenticación segura** con roles de usuario
-- 🎨 **Interfaz moderna** con Tailwind CSS
+-  **Dashboard interactivo** con estadísticas de llamadas
+-  **Sincronización automática** de CDRs desde la central Grandstream
+-  **Gestión de extensiones** con estado en tiempo real
+-  **Gráficos y reportes** de llamadas entrantes, salientes y perdidas
+-  **Exportación a Excel/PDF** de reportes personalizados
+-  **Autenticación segura** con roles de usuario
+-  **Interfaz moderna** con Tailwind CSS
 
 ---
 
-## 📋 Requisitos del Sistema
+##  Requisitos del Sistema
 
 | Requisito | Versión Mínima |
 |-----------|----------------|
+| XAMPP | 8.2+ (incluye PHP y MySQL) |
 | PHP | 8.2 o superior |
 | Composer | 2.x |
 | Node.js | 18.x o superior |
 | NPM | 9.x o superior |
-| MySQL | 8.0 o SQLite 3 |
+| MySQL | 8.0 |
 | Central Grandstream | UCM con API habilitada |
+
+>  **Recomendado:** Usar [XAMPP](https://www.apachefriends.org/) como entorno de desarrollo local, ya que incluye Apache, PHP y MySQL preconfigurados.
 
 ---
 
-## 🚀 Instalación
+##  Instalación
 
-### 1. Clonar el repositorio
+### 1. Clonar el repositorio en XAMPP
+
+Clona el proyecto dentro de la carpeta `htdocs` de XAMPP:
 
 ```bash
+cd C:\xampp\htdocs
 git clone https://github.com/tu-usuario/panel-llamadas.git
 cd panel-llamadas
 ```
+
+> En Linux/Mac la ruta sería `/opt/lampp/htdocs/`
 
 ### 2. Instalar dependencias de PHP
 
@@ -75,11 +83,11 @@ npm run build
 
 ---
 
-## ⚙️ Configuración del `.env`
+##  Configuración del `.env`
 
 Edita el archivo `.env` con los valores correspondientes a tu entorno:
 
-### 🗄️ Base de Datos
+###  Base de Datos
 
 Para **MySQL**:
 ```env
@@ -92,7 +100,7 @@ DB_PASSWORD=tu_contraseña
 ```
 
 
-### 📞 Configuración de Grandstream UCM
+###  Configuración de Grandstream UCM
 
 Estas variables son **obligatorias** para conectar con tu central telefónica:
 
@@ -113,9 +121,9 @@ GRANDSTREAM_PASS=tu_contraseña_api
 GRANDSTREAM_VERIFY_SSL=false
 ```
 
-> ⚠️ **Importante:** El usuario debe tener permisos de API habilitados en la central Grandstream UCM.
+>  **Importante:** El usuario debe tener permisos de API habilitados en la central Grandstream UCM.
 
-### 👤 Credenciales del Seeder de Usuarios
+###  Credenciales del Seeder de Usuarios
 
 Configura los usuarios que se crearán al ejecutar el seeder:
 
@@ -133,7 +141,7 @@ USUARIO_PASS=contraseña_segura_usuario
 
 ---
 
-## 🗃️ Base de Datos
+##  Base de Datos
 
 ### Ejecutar migraciones
 
@@ -151,7 +159,7 @@ Este comando creará los usuarios configurados en las variables de entorno (`ADM
 
 ---
 
-## 🔧 Comandos Personalizados
+##  Comandos Personalizados
 
 El panel incluye comandos Artisan para sincronización con la central Grandstream:
 
@@ -160,6 +168,7 @@ El panel incluye comandos Artisan para sincronización con la central Grandstrea
 ```bash
 php artisan calls:sync
 ```
+- RECOMENDADO LA PRIMERA VEZ
 
 Opciones disponibles:
 ```bash
@@ -184,31 +193,56 @@ Este comando:
 - Sincroniza nombres, estados y configuraciones
 - Actualiza la información en tiempo real
 
-### Programar sincronización automática (Cron)
 
-Agrega al crontab del servidor:
+##  Ejecutar con XAMPP
 
-```bash
-* * * * * cd /ruta/al/proyecto && php artisan schedule:run >> /dev/null 2>&1
+### 1. Iniciar servicios de XAMPP
+
+Abre el **Panel de Control de XAMPP** e inicia:
+-  **Apache**
+-  **MySQL**
+
+### 2. Configurar Virtual Host (Opcional)
+
+Para acceder mediante un dominio personalizado, edita el archivo `httpd-vhosts.conf`:
+
+**Windows:** `C:\xampp\apache\conf\extra\httpd-vhosts.conf`
+
+```apache
+<VirtualHost *:80>
+    DocumentRoot "C:/xampp/htdocs/panel-llamadas/public"
+    ServerName panel-llamadas.local
+    <Directory "C:/xampp/htdocs/panel-llamadas/public">
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
 ```
 
----
+Y agrega al archivo `hosts`:
 
-## 🖥️ Ejecutar en Desarrollo
+**Windows:** `C:\Windows\System32\drivers\etc\hosts`
+```
+127.0.0.1 panel-llamadas.local
+```
+
+### 3. Acceder a la aplicación
+
+- **Sin Virtual Host:** `http://localhost/panel-llamadas/public`
+- **Con Virtual Host:** `http://panel-llamadas.local`
+- **En red local:** `http://[IP-DEL-SERVIDOR]/panel-llamadas/public`
+
+### 4. Compilar assets en desarrollo (opcional)
+
+Si necesitas modificar estilos o JavaScript:
 
 ```bash
-# Terminal 1: Servidor Laravel
-php artisan serve
-
-# Terminal 2: Compilación de assets en tiempo real
 npm run dev
 ```
 
-Accede a la aplicación en: `http://localhost:8000`
-
 ---
 
-## 📁 Estructura del Proyecto
+##  Estructura del Proyecto
 
 ```
 ├── app/
@@ -232,7 +266,7 @@ Accede a la aplicación en: `http://localhost:8000`
 
 ---
 
-## 🔒 Seguridad
+##  Seguridad
 
 - Las credenciales sensibles se manejan exclusivamente mediante variables de entorno
 - El archivo `.env` está excluido del repositorio (`.gitignore`)
@@ -242,18 +276,3 @@ Accede a la aplicación en: `http://localhost:8000`
 ---
 
 
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia MIT. Consulta el archivo [LICENSE](LICENSE) para más detalles.
-
----
-
-## 📧 Soporte
-
-Si tienes preguntas o encuentras algún problema, abre un [Issue](../../issues) en el repositorio.
-
----
-
-<p align="center">
-  Desarrollado con ❤️ usando <a href="https://laravel.com">Laravel</a>
-</p>
