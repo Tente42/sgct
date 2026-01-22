@@ -1,4 +1,4 @@
-# 📞 Panel de Gestión de Llamadas - Grandstream UCM
+#  Panel de Gestión de Llamadas - Grandstream UCM
 
 <p align="center">
   <img src="https://img.shields.io/badge/Laravel-11-FF2D20?style=for-the-badge&logo=laravel&logoColor=white" alt="Laravel 11">
@@ -37,16 +37,22 @@ Panel de administración y monitoreo de llamadas para centrales telefónicas **G
 
 ---
 
-##  Instalación
+##  Instalación (recomendado usar CMD y no powershell)
 
+### 0. Editar PHP.ini
+
+> Se encuentra en la ruta `/XAMPP/php` 
+
+Aqui se debe editar la linea ;extension=gd y ;extension=zip
+Quitandole los ; del principio
 ### 1. Clonar el repositorio en XAMPP
 
 Clona el proyecto dentro de la carpeta `htdocs` de XAMPP:
 
 ```bash
 cd C:\xampp\htdocs
-git clone https://github.com/tu-usuario/panel-llamadas.git
-cd panel-llamadas
+git clone https://github.com/tu-usuario/panel-gestion-llamadas.git
+cd panel-gestion-llamadas
 ```
 
 > En Linux/Mac la ruta sería `/opt/lampp/htdocs/`
@@ -87,7 +93,7 @@ npm run build
 
 Edita el archivo `.env` con los valores correspondientes a tu entorno:
 
-###  Base de Datos
+###  Base de Datos (OJO CON LOS # AL COMIENZO, QUEDAN COMO COMENTARIO)
 
 Para **MySQL**:
 ```env
@@ -166,15 +172,15 @@ El panel incluye comandos Artisan para sincronización con la central Grandstrea
 ### Sincronizar CDRs (Registros de Llamadas)
 
 ```bash
-php artisan calls:sync
+php artisan calls:sync #<--- Este trae solo las llamadas del 2026 (en caso de que sean muchas llamadas lo mejor es ir año por año)
 ```
-- RECOMENDADO LA PRIMERA VEZ
 
 Opciones disponibles:
 ```bash
 # Sincronizar un año específico
-php artisan calls:sync --year=2026
+php artisan calls:sync --year=2023 #<--- con 2023 se traen todas las llamadas desde el 2023 hasta la fecha actual
 ```
+- RECOMENDADO LA PRIMERA VEZ
 
 Este comando:
 - Conecta con la API de la central Grandstream
@@ -186,6 +192,7 @@ Este comando:
 
 ```bash
 php artisan extensions:sync
+php artisan extensions:import
 ```
 
 Este comando:

@@ -124,7 +124,7 @@ class ImportarExtensiones extends Command
                 'max_contacts'   => $maxContacts
             ];
 
-            // 3. COMPARACIÓN INTELIGENTE (LA MAGIA) 🪄
+            // 3. COMPARACIÓN INTELIGENTE
             if ($usuarioLocal) {
                 // Si existe, verificamos si ALGO cambió
                 $hayCambios = false;

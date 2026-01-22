@@ -29,7 +29,7 @@ class ExtensionController extends Controller
         }
 
         // 2. FASE DE CONEXIÓN A GRANDSTREAM
-        // Intentamos obtener cookie de sesión
+        // Cookie de sesión
         $ip = config('services.grandstream.host');
         $port = config('services.grandstream.port', '7110');
         $user = config('services.grandstream.user');
@@ -126,6 +126,85 @@ class ExtensionController extends Controller
         );
 
         return back()->with('success', 'Nombre actualizado correctamente');
+    }
+
+    /**
+     * Crear una nueva extensión en la Central Grandstream UCM6300 y en la BD local
+     * Usa la API addSIPAccountAndUser
+     */
+    public function store(Request $request)
+    {
+        // 1. Validación de datos
+        $request->validate([
+            'extension' => 'required|string|regex:/^[0-9]+$/|unique:extensions,extension',
+            'password' => 'required|string',
+            'password_confirmation' => 'required|string|same:password',
+        ], [
+            'extension.required' => 'El número de anexo es obligatorio.',
+            'extension.regex' => 'El número de anexo solo puede contener dígitos.',
+            'extension.unique' => 'Este número de anexo ya existe en la base de datos local.',
+            'password.required' => 'La contraseña es obligatoria.',
+            'password_confirmation.required' => 'Debe confirmar la contraseña.',
+            'password_confirmation.same' => 'Las contraseñas no coinciden.',
+        ]);
+
+        // 2. FASE DE CONEXIÓN A GRANDSTREAM
+        $ip = config('services.grandstream.host');
+        $port = config('services.grandstream.port', '7110');
+        $user = config('services.grandstream.user');
+        $pass = config('services.grandstream.pass');
+        $apiUrl = "https://{$ip}:{$port}/api";
+        $cookie = $this->getCookie($apiUrl, $user, $pass);
+
+        if (!$cookie) {
+            return back()->with('error', 'Error: No se pudo conectar con la Central Telefónica. Verifique la red.');
+        }
+
+        // 3. CREAR EXTENSIÓN EN LA CENTRAL (addSIPAccountAndUser)
+        // Basado en la documentación oficial del UCM6300
+        $createParams = [
+            'extension' => $request->extension,
+            'secret' => $request->password,               // Contraseña SIP
+            'vmsecret' => $request->password,             // Contraseña Voicemail
+            'user_password' => $request->password,        // Contraseña de usuario
+            'max_contacts' => '1',                        // Concurrent Registration
+            'permission' => 'internal',                   // Permisos de llamada
+            'language' => 'es',                           // Idioma
+            'wave_privilege_id' => '0',                   // Privilegio Wave (0 = ninguno)
+            'dtmf_mode' => 'rfc4733',                     // DTMF Mode
+            'tel_uri' => 'disabled',                      // TEL URI
+            'direct_media' => 'no',                       // Enable Direct Media
+            'fax_mode' => 'none',                         // Fax Mode
+            'skip_trunk_auth' => 'no',                    // Skip Trunk Auth
+            'moh' => 'default',                           // Music on Hold
+        ];
+
+        $respCreate = $this->connectApi($apiUrl, 'addSIPAccountAndUser', $createParams, $cookie);
+
+        // 4. VERIFICAR RESULTADO DE LA CREACIÓN
+        $statusCode = $respCreate['status'] ?? -999;
+        if ($statusCode != 0) {
+            $msgError = $respCreate['response']['body'] ?? $respCreate['response']['message'] ?? json_encode($respCreate);
+            return back()->with('error', "Falló la creación en la Central (código: {$statusCode}): {$msgError}");
+        }
+
+        // 5. APLICAR CAMBIOS EN LA CENTRAL (Commit)
+        $this->connectApi($apiUrl, 'applyChanges', [], $cookie);
+
+        // 6. GUARDAR EN BASE DE DATOS LOCAL (solo si la central lo creó exitosamente)
+        try {
+            Extension::create([
+                'extension' => $request->extension,
+                'permission' => 'Internal',
+                'do_not_disturb' => false,
+                'max_contacts' => 1,
+            ]);
+        } catch (\Exception $e) {
+            return back()->with('error', "El anexo se creó en la Central, pero falló el guardado local: {$e->getMessage()}");
+        }
+
+        return redirect()->route('extension.index', ['anexo' => $request->extension])
+                         ->with('success', "Anexo {$request->extension} creado exitosamente. Puede editarlo para agregar más detalles.");
     }
 
     public function index(Request $request)

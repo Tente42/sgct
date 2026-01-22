@@ -21,8 +21,18 @@ class CdrController extends Controller
         $fechaInicio = $request->input('fecha_inicio', Carbon::now()->format('Y-m-d')); 
         $fechaFin    = $request->input('fecha_fin', Carbon::now()->format('Y-m-d'));
         $anexo       = $request->input('anexo');
-        $tarifa      = $request->input('tarifa', 50); 
         $titulo      = $request->input('titulo', 'Reporte de Llamadas');
+        
+        // Ordenamiento - solo uno activo a la vez
+        $sortBy = $request->input('sort', 'start_time');
+        $sortDir = $request->input('dir', 'desc');
+        
+        // Validar columnas permitidas para ordenar
+        $allowedSorts = ['start_time', 'billsec', 'tipo', 'costo'];
+        if (!in_array($sortBy, $allowedSorts)) {
+            $sortBy = 'start_time';
+        }
+        $sortDir = $sortDir === 'asc' ? 'asc' : 'desc';
 
         $query = Call::whereBetween('start_time', [
             $fechaInicio . ' 00:00:00', 
@@ -47,13 +57,51 @@ class CdrController extends Controller
         $totalLlamadas = $query->count();
         $totalSegundos = $query->sum('billsec');
         $minutosFacturables = ceil($totalSegundos / 60);
-        $totalPagar = $minutosFacturables * $tarifa;
+        
+        // Calcular el total sumando el costo de cada llamada (usando el accessor)
+        $llamadasParaCosto = (clone $query)->get();
+        $totalPagar = $llamadasParaCosto->sum(fn($call) => $call->cost);
 
-        $llamadas = $query->orderBy('start_time', 'desc')->paginate(50);
+        // Aplicar ordenamiento
+        if ($sortBy === 'tipo') {
+            // Ordenar por tipo de llamada usando CASE en SQL
+            $query->orderByRaw("
+                CASE 
+                    WHEN destination REGEXP '^[0-9]{3,4}$' THEN 1
+                    WHEN destination REGEXP '^800' THEN 2
+                    WHEN destination REGEXP '^9[0-9]{8}$' THEN 3
+                    WHEN destination REGEXP '^\\\\+?569[0-9]{8}$' THEN 3
+                    WHEN destination REGEXP '^(\\\\+|00)' AND destination NOT REGEXP '^\\\\+?56' THEN 5
+                    ELSE 4
+                END " . $sortDir);
+        } elseif ($sortBy === 'costo') {
+            // Ordenar por costo calculado
+            // Obtener tarifas
+            $prices = \App\Models\Setting::pluck('value', 'key')->toArray();
+            $priceMobile = $prices['price_mobile'] ?? 80;
+            $priceNational = $prices['price_national'] ?? 40;
+            $priceInternational = $prices['price_international'] ?? 500;
+            
+            $query->orderByRaw("
+                CASE 
+                    WHEN billsec <= 3 THEN 0
+                    WHEN destination REGEXP '^[0-9]{3,4}$' THEN 0
+                    WHEN destination REGEXP '^800' THEN 0
+                    WHEN destination REGEXP '^9[0-9]{8}$' THEN CEIL(billsec/60) * {$priceMobile}
+                    WHEN destination REGEXP '^\\\\+?569[0-9]{8}$' THEN CEIL(billsec/60) * {$priceMobile}
+                    WHEN destination REGEXP '^(\\\\+|00)' AND destination NOT REGEXP '^\\\\+?56' THEN CEIL(billsec/60) * {$priceInternational}
+                    ELSE CEIL(billsec/60) * {$priceNational}
+                END " . $sortDir);
+        } else {
+            $query->orderBy($sortBy, $sortDir);
+        }
+
+        $llamadas = $query->paginate(50);
 
         return view('reporte', compact(
             'llamadas', 'fechaInicio', 'fechaFin', 'anexo', 'totalLlamadas', 
-            'totalSegundos', 'totalPagar', 'minutosFacturables', 'tarifa', 'labels', 'data', 'titulo'
+            'totalSegundos', 'totalPagar', 'minutosFacturables', 'labels', 'data', 'titulo',
+            'sortBy', 'sortDir'
         ));
     }
 
@@ -208,35 +256,67 @@ class CdrController extends Controller
     // ==========================================
     public function descargarPDF(Request $request)
     {
+        // Aumentar límite de memoria temporalmente para PDFs grandes
+        @ini_set('memory_limit', '1024M');
+        @ini_set('max_execution_time', 300);
+        
         $fechaInicio = $request->input('fecha_inicio', Carbon::now()->format('Y-m-d')); 
         $fechaFin    = $request->input('fecha_fin', Carbon::now()->format('Y-m-d'));
         $anexo       = $request->input('anexo');
-        $tarifa      = $request->input('tarifa', 50); 
 
+        // Query base: solo llamadas CONTESTADAS (las que generan costo)
         $query = Call::whereBetween('start_time', [
             $fechaInicio . ' 00:00:00', 
             $fechaFin . ' 23:59:59'
-        ]);
+        ])->where('disposition', 'LIKE', '%ANSWERED%');
 
         if ($anexo) {
             $query->where('source', $anexo);
         }
 
-        $llamadas = $query->orderBy('start_time', 'asc')->get();
+        // Contar total de registros en el período
+        $totalRegistros = (clone $query)->count();
+        
+        // Calcular totales del período COMPLETO usando agregación en BD
+        $totalesPeriodo = (clone $query)->selectRaw('
+            COUNT(*) as total_llamadas,
+            SUM(billsec) as total_segundos
+        ')->first();
 
-        $totalLlamadas = $llamadas->count();
-        $totalSegundos = $llamadas->sum('billsec');
+        $totalLlamadas = $totalesPeriodo->total_llamadas ?? 0;
+        $totalSegundos = $totalesPeriodo->total_segundos ?? 0;
         $minutosFacturables = ceil($totalSegundos / 60);
-        $totalPagar = $minutosFacturables * $tarifa;
+
+        // Limitar registros para el detalle del PDF (máximo 500)
+        $limitePDF = 500;
+        $llamadas = $query->orderBy('start_time', 'asc')->limit($limitePDF)->get();
+        
+        // Calcular el total a pagar sumando el costo de cada llamada del período completo
+        // Usamos chunks para no agotar memoria
+        $totalPagar = 0;
+        Call::whereBetween('start_time', [
+            $fechaInicio . ' 00:00:00', 
+            $fechaFin . ' 23:59:59'
+        ])->where('disposition', 'LIKE', '%ANSWERED%')
+          ->when($anexo, fn($q) => $q->where('source', $anexo))
+          ->chunk(500, function ($chunk) use (&$totalPagar) {
+              foreach ($chunk as $call) {
+                  $totalPagar += $call->cost;
+              }
+          });
 
         $titulo = $request->input('titulo', 'Reporte de Llamadas');
         $ip_central = config('services.grandstream.host');
+        
+        // Indicar si el reporte está truncado
+        $truncado = $totalRegistros > $limitePDF;
+        $registrosMostrados = min($totalRegistros, $limitePDF);
 
         $pdf = Pdf::loadView('pdf_reporte', compact(
             'llamadas', 'fechaInicio', 'fechaFin', 'anexo', 
-            'totalLlamadas', 'totalPagar', 'minutosFacturables', 'tarifa',
-            'titulo', 'ip_central'
-        ));
+            'totalLlamadas', 'totalPagar', 'minutosFacturables',
+            'titulo', 'ip_central', 'truncado', 'registrosMostrados', 'totalRegistros'
+        ))->setPaper('letter', 'portrait');
 
         return $pdf->download('Reporte_Llamadas_' . date('dmY_His') . '.pdf');
     }

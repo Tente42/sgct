@@ -50,6 +50,7 @@ class CallsExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             'Fecha y Hora',
             'Origen',
             'Destino',
+            'Tipo',
             'Duración (seg)',
             'Costo ($)',
             'Estado',
@@ -63,8 +64,9 @@ class CallsExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             $call->start_time,
             $call->source,
             $call->destination,
+            $call->call_type,
             $call->billsec, // Tiempo hablado (facturado), no duration
-            $call->cost, // Dejamos el número limpio para que Excel pueda sumar
+            $call->cost, // Costo calculado dinámicamente
             $call->disposition,
         ];
     }

@@ -37,6 +37,10 @@ class SyncExtensions extends Command
             // PASO 1: PEDIR CHALLENGE [METODO NUMERO 2 PARA PEDIR LOS DATOS A LA CENTRAL]
             // De todos modos recomiendo usar el metodo DIGEST AUTH del otro comando (cdrController)
             // Al ser mas simple y rapido
+            // [CUIDADO CON LO DE ARRIBA, HAY VARIOS FACTORES A CONSIDERAR ANTES DE ELEGIR UN METODO
+            // REVISAR DOCUMENTACION DE GRANDSTREAM, PERO EN GENERAL DIGEST AUTH FUNCIONA PARA EL CDR
+            // CASI TODOS LOS DEMAS REQUIEREN ESTE METODO DE CHALLENGE/LOGIN, PARA MAS INFORMACION
+            // LEER LA CODUMENTACION DEL PROYECTO]
             // ==========================================
             $this->comment("1. Solicitando Challenge...");
             $respChallenge = Http::withoutVerifying()->post($url, [
@@ -88,7 +92,7 @@ class SyncExtensions extends Command
             $respData = Http::withoutVerifying()->post($url, [
                 'request' => [
                     'action'   => 'listAccount',
-                    'cookie'   => $cookie,  // <--- AQUÍ VA LA LLAVE MAESTRA
+                    'cookie'   => $cookie,  // <--- AQUÍ VA LA COOKIE OBTENIDA
                     'item_num' => '1000',
                     'sidx'     => 'extension',
                     'sord'     => 'asc',

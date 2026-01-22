@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CdrController;
 use App\Http\Controllers\ExtensionController;
+use App\Http\Controllers\SettingController;
 use App\Http\Controllers\AuthController; 
 
 /*
@@ -39,6 +40,11 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/sync', [CdrController::class, 'syncCDRs'])->name('cdr.sync');
     Route::get('/export-pdf', [CdrController::class, 'descargarPDF'])->name('cdr.pdf');
     Route::post('/extension/update', [ExtensionController::class, 'update'])->name('extension.update');
+    Route::post('/extension/store', [ExtensionController::class, 'store'])->name('extension.store');
     Route::get('/exportar-excel', [App\Http\Controllers\CdrController::class, 'exportarExcel'])->name('calls.export');
+
+    // Configuración de Tarifas
+    Route::get('/tarifas', [SettingController::class, 'index'])->name('settings.index');
+    Route::post('/tarifas', [SettingController::class, 'update'])->name('settings.update');
 
 });

@@ -61,7 +61,7 @@
                     <div>
                         <h6 class="text-gray-500 uppercase text-sm font-bold">Total a Cobrar</h6>
                         <div class="text-3xl font-extrabold text-green-600">${{ number_format($totalPagar, 0, ',', '.') }}</div>
-                        <small class="text-gray-500 text-xs">(Tarifa: ${{ $tarifa }}/min)</small>
+                        <small class="text-gray-500 text-xs">(Tarifas dinámicas por tipo)</small>
                     </div>
                     <div class="text-4xl text-green-500 opacity-25"><i class="fas fa-cash-stack"></i></div>
                 </div>
@@ -94,18 +94,8 @@
                             <input type="text" class="flex-1 block w-full rounded-none rounded-r-md border-gray-300 shadow-sm" name="anexo" value="{{ $anexo }}" placeholder="Ej: 3002">
                         </div>
                     </div>
-
-
-                    <div class="md:col-span-1">
-                        <label class="block font-bold text-sm text-green-600">Valor Minuto:</label>
-                        <div class="flex mt-1">
-                            <span class="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-green-600 font-bold">$</span>
-                            <input type="number" class="flex-1 block w-full rounded-none rounded-r-md border-green-500 shadow-sm" name="tarifa" 
-                                   value="{{ $tarifa ?? 50 }}" min="0">
-                        </div>
-                    </div>
                     
-                    <div class="md:col-span-1 flex gap-2">
+                    <div class="md:col-span-2 flex gap-2 items-end">
                         <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
                             <i class="fas fa-calculator"></i> Calcular
                         </button>
@@ -136,13 +126,55 @@
                 <span class="bg-gray-100 text-gray-800 border px-2 py-1 rounded-md text-sm">Viendo {{ $llamadas->count() }} de {{ $llamadas->total() }}</span>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full bg-white">
+                @php
+                    $currentSort = request('sort', 'start_time');
+                    $currentDir = request('dir', 'desc');
+                @endphp
+                <table class="min-w-full bg-white" id="tabla-llamadas">
                     <thead class="bg-gray-50 text-gray-500 uppercase text-sm leading-normal">
                         <tr>
-                            <th class="py-3 px-6 text-center">Hora</th>
+                            <th class="py-3 px-6 text-center">
+                                <a href="{{ request()->fullUrlWithQuery(['sort' => 'start_time', 'dir' => ($currentSort == 'start_time' && $currentDir == 'asc') ? 'desc' : 'asc']) }}" 
+                                   class="flex items-center justify-center gap-1 hover:text-gray-700">
+                                    Hora
+                                    <span class="flex flex-col text-xs leading-none">
+                                        <i class="fas fa-caret-up {{ $currentSort == 'start_time' && $currentDir == 'asc' ? 'text-blue-500' : 'text-gray-300' }}"></i>
+                                        <i class="fas fa-caret-down {{ $currentSort == 'start_time' && $currentDir == 'desc' ? 'text-blue-500' : 'text-gray-300' }}"></i>
+                                    </span>
+                                </a>
+                            </th>
                             <th class="py-3 px-6 text-left">Origen / Nombre</th>
                             <th class="py-3 px-6 text-center">Destino</th>
-                            <th class="py-3 px-6 text-center">Duración</th>
+                            <th class="py-3 px-6 text-center">
+                                <a href="{{ request()->fullUrlWithQuery(['sort' => 'tipo', 'dir' => ($currentSort == 'tipo' && $currentDir == 'asc') ? 'desc' : 'asc']) }}" 
+                                   class="flex items-center justify-center gap-1 hover:text-gray-700">
+                                    Tipo
+                                    <span class="flex flex-col text-xs leading-none">
+                                        <i class="fas fa-caret-up {{ $currentSort == 'tipo' && $currentDir == 'asc' ? 'text-blue-500' : 'text-gray-300' }}"></i>
+                                        <i class="fas fa-caret-down {{ $currentSort == 'tipo' && $currentDir == 'desc' ? 'text-blue-500' : 'text-gray-300' }}"></i>
+                                    </span>
+                                </a>
+                            </th>
+                            <th class="py-3 px-6 text-center">
+                                <a href="{{ request()->fullUrlWithQuery(['sort' => 'billsec', 'dir' => ($currentSort == 'billsec' && $currentDir == 'asc') ? 'desc' : 'asc']) }}" 
+                                   class="flex items-center justify-center gap-1 hover:text-gray-700">
+                                    Duración
+                                    <span class="flex flex-col text-xs leading-none">
+                                        <i class="fas fa-caret-up {{ $currentSort == 'billsec' && $currentDir == 'asc' ? 'text-blue-500' : 'text-gray-300' }}"></i>
+                                        <i class="fas fa-caret-down {{ $currentSort == 'billsec' && $currentDir == 'desc' ? 'text-blue-500' : 'text-gray-300' }}"></i>
+                                    </span>
+                                </a>
+                            </th>
+                            <th class="py-3 px-6 text-center">
+                                <a href="{{ request()->fullUrlWithQuery(['sort' => 'costo', 'dir' => ($currentSort == 'costo' && $currentDir == 'asc') ? 'desc' : 'asc']) }}" 
+                                   class="flex items-center justify-center gap-1 hover:text-gray-700">
+                                    Costo
+                                    <span class="flex flex-col text-xs leading-none">
+                                        <i class="fas fa-caret-up {{ $currentSort == 'costo' && $currentDir == 'asc' ? 'text-blue-500' : 'text-gray-300' }}"></i>
+                                        <i class="fas fa-caret-down {{ $currentSort == 'costo' && $currentDir == 'desc' ? 'text-blue-500' : 'text-gray-300' }}"></i>
+                                    </span>
+                                </a>
+                            </th>
                             <th class="py-3 px-6 text-center">Estado</th>
                         </tr>
                     </thead>
@@ -184,8 +216,25 @@
                                     </span>
                                 </td>
 
+                                <td class="py-3 px-6 text-center">
+                                    @php $tipo = $cdr->call_type; @endphp
+                                    @if($tipo == 'Celular')
+                                        <span class="bg-purple-100 text-purple-800 py-1 px-2 rounded-full text-xs">Celular</span>
+                                    @elseif($tipo == 'Internacional')
+                                        <span class="bg-red-100 text-red-800 py-1 px-2 rounded-full text-xs">Internacional</span>
+                                    @elseif($tipo == 'Interna')
+                                        <span class="bg-gray-100 text-gray-600 py-1 px-2 rounded-full text-xs">Interna</span>
+                                    @else
+                                        <span class="bg-blue-100 text-blue-800 py-1 px-2 rounded-full text-xs">Nacional</span>
+                                    @endif
+                                </td>
+
                                 <td class="py-3 px-6 text-center font-bold {{ $cdr->billsec > 0 ? 'text-gray-800' : 'text-gray-400' }}">
                                     {{ $cdr->billsec }}s
+                                </td>
+
+                                <td class="py-3 px-6 text-center font-bold {{ $cdr->cost > 0 ? 'text-green-600' : 'text-gray-400' }}">
+                                    ${{ number_format($cdr->cost, 0, ',', '.') }}
                                 </td>
 
                                 <td class="py-3 px-6 text-center">
@@ -204,7 +253,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="5" class="py-12 text-center">
+                                <td colspan="7" class="py-12 text-center">
                                     <div class="text-gray-400">
                                         <i class="fas fa-inbox text-4xl"></i>
                                         <p class="mt-2">No se encontraron llamadas con estos filtros.</p>
