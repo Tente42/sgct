@@ -29,7 +29,7 @@ class ImportarExtensiones extends Command
     public function handle()
     {
         $target = $this->argument('target');
-        $modo = $target ? "QUIRÚRGICO ($target)" : "MASIVO INTELIGENTE";
+        $modo = $target ? " ($target)" : "MASIVO (Todos los usuarios)";
 
         $this->info("============================================");
         $this->info("  SINCRONIZADOR - MODO: $modo");

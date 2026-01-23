@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Extension;
+use App\Http\Controllers\IPController;
 use Illuminate\Support\Facades\Http; // Importante para las peticiones
 
 class ExtensionController extends Controller
@@ -215,7 +216,12 @@ class ExtensionController extends Controller
             ->orderBy('extension', 'asc')
             ->paginate(50)
             ->appends($request->only('anexo'));
-        return view('configuracion', compact('extensions', 'anexo'));
+
+        // Obtener las IPs de las extensiones en tiempo real
+        $ipController = new IPController();
+        $ips = $ipController->getExtensionIps();
+
+        return view('configuracion', compact('extensions', 'anexo', 'ips'));
     }
 
     // ==========================================
