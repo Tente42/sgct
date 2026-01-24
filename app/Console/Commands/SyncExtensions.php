@@ -40,7 +40,7 @@ class SyncExtensions extends Command
             // [CUIDADO CON LO DE ARRIBA, HAY VARIOS FACTORES A CONSIDERAR ANTES DE ELEGIR UN METODO
             // REVISAR DOCUMENTACION DE GRANDSTREAM, PERO EN GENERAL DIGEST AUTH FUNCIONA PARA EL CDR
             // CASI TODOS LOS DEMAS REQUIEREN ESTE METODO DE CHALLENGE/LOGIN, PARA MAS INFORMACION
-            // LEER LA CODUMENTACION DEL PROYECTO]
+            // LEER LA DOCUMENTACION DEL PROYECTO]
             // ==========================================
             $this->comment("1. Solicitando Challenge...");
             $respChallenge = Http::withoutVerifying()->post($url, [
@@ -63,7 +63,7 @@ class SyncExtensions extends Command
             // ==========================================
             $this->comment("2. Calculando Token y obteniendo Cookie...");
             
-            // Fórmula: MD5( challenge + password )
+            // Formula: MD5( challenge + password )
             $token = md5($challenge . $clave);
 
             $respLogin = Http::withoutVerifying()->post($url, [
@@ -92,7 +92,7 @@ class SyncExtensions extends Command
             $respData = Http::withoutVerifying()->post($url, [
                 'request' => [
                     'action'   => 'listAccount',
-                    'cookie'   => $cookie,  // <--- AQUÍ VA LA COOKIE OBTENIDA
+                    'cookie'   => $cookie,  // <--- AQUI VA LA COOKIE OBTENIDA
                     'item_num' => '1000',
                     'sidx'     => 'extension',
                     'sord'     => 'asc',

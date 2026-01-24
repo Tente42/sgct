@@ -8,7 +8,7 @@ use App\Models\Setting;
 class SettingController extends Controller
 {
     /**
-     * Mostrar la página de configuración de tarifas
+     * Mostrar la pagina de configuracion de tarifas
      */
     public function index()
     {

@@ -89,8 +89,8 @@ class SyncCalls extends Command
                                 return !empty($seg['disposition']); 
                             });
 
-                            // B. Si hubo ÉXITO, borrar los FALLOS
-                            // Verificamos si alguien contestó en este grupo
+                            // B. Si hubo EXITO, borrar los FALLOS
+                            // Verificamos si alguien contesto en este grupo
                             $huboExito = false;
                             foreach ($validSegments as $seg) {
                                 if (($seg['billsec'] ?? 0) > 0) { 
@@ -99,15 +99,15 @@ class SyncCalls extends Command
                                 }
                             }
 
-                            // Si alguien contestó, filtramos y SOLO dejamos las contestadas
-                            // Así eliminamos la llamada de "0 segundos" que te molesta
+                            // Si alguien contesto, filtramos y SOLO dejamos las contestadas
+                            
                             if ($huboExito) {
                                 $validSegments = array_filter($validSegments, function($seg) {
                                     return ($seg['billsec'] ?? 0) > 0;
                                 });
                             }
 
-                            // --- 3. GUARDAR LO QUE QUEDÓ ---
+                            // --- 3. GUARDAR LO QUE QUEDO ---
                             foreach ($validSegments as $record) {
                                 
                                 // ID: Preferimos AcctId
@@ -164,8 +164,8 @@ class SyncCalls extends Command
 
         // Analizar el nodo actual
         if (is_array($cdrNode) && isset($cdrNode['start']) && !empty($cdrNode['start'])) {
-            // Recolectamos todo lo que tenga duración o estado (incluso 0 segundos)
-            // El filtro de arriba decidirá si lo borra o no.
+            // Recolectamos todo lo que tenga duracion o estado (incluso 0 segundos)
+            // El filtro de arriba decidira si lo borra o no.
             $collected[] = $cdrNode;
         }
 

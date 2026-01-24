@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Http;
 
 trait GrandstreamTrait
 {
-    // Métodos centralizados de conexión
+    // Metodos centralizados de conexion
 
     private function connectApi($action, $params = [], $cookie = null)
     {

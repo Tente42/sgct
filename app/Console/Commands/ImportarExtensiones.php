@@ -41,11 +41,11 @@ class ImportarExtensiones extends Command
             return;
         }
 
-        // --- OBTENCIÓN DE DATOS ---
+        // --- OBTENCION DE DATOS ---
         $listaUsuarios = [];
 
         if ($target) {
-            // Modo Rápido (1 usuario)
+            // Modo Rapido (1 usuario)
             $userInfo = $this->enviarAccion($cookie, 'getUser', ['user_name' => $target]);
             if (($userInfo['status'] ?? -1) == 0) {
                  $userDat = $userInfo['response']['user_name'] ?? $userInfo['response'][$target] ?? $userInfo['response'];
@@ -124,9 +124,9 @@ class ImportarExtensiones extends Command
                 'max_contacts'   => $maxContacts
             ];
 
-            // 3. COMPARACIÓN INTELIGENTE
+            // 3. COMPARACION INTELIGENTE
             if ($usuarioLocal) {
-                // Si existe, verificamos si ALGO cambió
+                // Si existe, verificamos si ALGO cambio
                 $hayCambios = false;
                 
                 // Comparamos campo por campo clave
@@ -168,7 +168,7 @@ class ImportarExtensiones extends Command
         );
     }
 
-    // --- CONEXIÓN ---
+    // --- CONEXION ---
     private function hacerLogin() { /* (Igual que antes) */
         try {
             $ch = Http::withoutVerifying()->post($this->apiUrl, ['request'=>['action'=>'challenge','user'=>$this->user,'version'=>'1.0']])->json();

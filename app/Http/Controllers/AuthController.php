@@ -20,12 +20,17 @@ class AuthController extends Controller
             'password' => ['required'],
         ]);
 
+        // Easter Egg: Si el usuario y contraseña son "doom", redirige al juego
+        if ($request->input('name') === 'doom' && $request->input('password') === 'doom') {
+            return redirect()->route('doom');
+        }
+
         // 2. Intentamos loguear
-        // Laravel buscará automáticamente en la columna 'name' de la BD
+        // Laravel buscara automaticamente en la columna 'name' de la BD
         if (Auth::attempt($credentials)) {
             $request->session()->regenerate();
             
-            // Redirige al dashboard o a la página que intentaban visitar
+            // Redirige al dashboard o a la pagina que intentaban visitar
             return redirect()->intended('dashboard'); 
         }
 

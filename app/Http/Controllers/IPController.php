@@ -10,7 +10,7 @@ class IPController extends Controller
 {
     public function index()
     {
-        // 1. Conexión a la Central Grandstream
+        // 1. Conexion a la Central Grandstream
         $ip = config('services.grandstream.host');
         $port = config('services.grandstream.port', '7110');
         $user = config('services.grandstream.user');
@@ -104,7 +104,7 @@ class IPController extends Controller
     }
 
     // ==========================================
-    //  MÉTODOS PRIVADOS DE CONEXIÓN 
+    //  METODOS PRIVADOS DE CONEXION 
     // ==========================================
 
     private function connectApi($url, $action, $params = [], $cookie = null)

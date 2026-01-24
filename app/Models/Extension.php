@@ -9,7 +9,7 @@ class Extension extends Model
 {
     use HasFactory;
 
-    // Campos permitidos para asignación masiva
+    // Campos permitidos para asignacion masiva
     protected $fillable = [
         'extension',
         'first_name',
@@ -22,7 +22,7 @@ class Extension extends Model
         'max_contacts',
     ];
 
-    // Casting de tipos para campos específicos
+    // Casting de tipos para campos especificos
     protected $casts = [
         'do_not_disturb' => 'boolean',
         'max_contacts' => 'integer',

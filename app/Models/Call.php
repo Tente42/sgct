@@ -12,20 +12,20 @@ class Call extends Model
 
     // --- LISTA DE PERMISOS ---
     protected $fillable = [
-        'unique_id',      // ID único de la central
+        'unique_id',      // ID unico de la central
         'start_time',     // Hora inicio
         'end_time',       // Hora fin
         'source',         // Origen (Anexo)
         'destination',    // Destino (Número marcado)
         'caller_name',    // Nombre del que llama
-        'duration',       // Duración total
+        'duration',       // Duracion total
         'billsec',        // Segundos cobrados
         'disposition',    // Estado (ANSWERED, BUSY, etc.)
-        'recording_file', // Archivo de grabación (si existe)
+        'recording_file', // Archivo de grabacion (si existe)
     ];
 
     // --- ACCESSORS ---
-    // Cache estático para tarifas (evita múltiples consultas a BD)
+    // Cache estatico para tarifas (evita multiples consultas a BD)
     protected static ?array $cachedPrices = null;
 
     /**
@@ -40,7 +40,7 @@ class Call extends Model
     }
 
     /**
-     * Limpiar cache de tarifas (útil si se actualizan las tarifas)
+     * Limpiar cache de tarifas (util si se actualizan las tarifas)
      */
     public static function clearPricesCache(): void
     {
@@ -48,14 +48,14 @@ class Call extends Model
     }
     
     /**
-     * Calcular el costo de la llamada basado en el destino y la duración
-     * Fórmula: (Duración en segundos / 60) * Tarifa del destino
-     * Redondea al minuto superior solo si dura más de 3 segundos
+     * Calcular el costo de la llamada basado en el destino y la duracion
+     * Formula: (Duracion en segundos / 60) * Tarifa del destino
+     * Redondea al minuto superior solo si dura mas de 3 segundos
      * 
      * Formatos Chile:
      * - Celular: 9XXXXXXXX o +569XXXXXXXX
-     * - Fijo RM: 2XXXXXXXX o +562XXXXXXXX (2 + 8 dígitos)
-     * - Fijo regiones: YYXXXXXXX o +56YYXXXXXXX (YY=código área + 7 dígitos)
+     * - Fijo RM: 2XXXXXXXX o +562XXXXXXXX (2 + 8 digitos)
+     * - Fijo regiones: YYXXXXXXX o +56YYXXXXXXX (YY=codigo area + 7 digitos)
      * - 800XXXXXX = Gratis (toll-free)
      * - 600XXXXXX = Tarifa nacional (costo compartido)
      */
@@ -95,23 +95,23 @@ class Call extends Model
         elseif (preg_match('/^9\d{8}$/', $destination)) {
             $pricePerMinute = $priceMobile;
         }
-        // Celular Chile con código país: +569XXXXXXXX o 569XXXXXXXX
+        // Celular Chile con codigo pais: +569XXXXXXXX o 569XXXXXXXX
         elseif (preg_match('/^(\+?56)9\d{8}$/', $destination)) {
             $pricePerMinute = $priceMobile;
         }
-        // Fijo RM con código país: +562XXXXXXXX (2 + 8 dígitos)
+        // Fijo RM con codigo pais: +562XXXXXXXX (2 + 8 digitos)
         elseif (preg_match('/^(\+?56)2\d{8}$/', $destination)) {
             $pricePerMinute = $priceNational;
         }
-        // Fijo otras regiones con código país: +56YYXXXXXXX (YY + 7 dígitos, YY != 2 ni 9)
+        // Fijo otras regiones con codigo pais: +56YYXXXXXXX (YY + 7 digitos, YY != 2 ni 9)
         elseif (preg_match('/^(\+?56)[3-8]\d{8}$/', $destination)) {
             $pricePerMinute = $priceNational;
         }
-        // Fijo RM sin código país: 2XXXXXXXX (2 + 8 dígitos = 9 dígitos)
+        // Fijo RM sin codigo pais: 2XXXXXXXX (2 + 8 digitos = 9 digitos)
         elseif (preg_match('/^2\d{8}$/', $destination)) {
             $pricePerMinute = $priceNational;
         }
-        // Fijo otras regiones sin código país: YYXXXXXXX (código área + 7 dígitos)
+        // Fijo otras regiones sin codigo pais: YYXXXXXXX (codigo area + 7 digitos)
         elseif (preg_match('/^[3-8]\d{8}$/', $destination)) {
             $pricePerMinute = $priceNational;
         }
@@ -132,15 +132,15 @@ class Call extends Model
     {
         $destination = $this->destination;
 
-        // Llamada interna (3-4 dígitos típicamente)
+        // Llamada interna (3-4 digitos tipicamente)
         if (preg_match('/^\d{3,4}$/', $destination)) {
             return 'Interna';
         }
-        // Línea 800 = Local (sin cobro)
+        // LLinea 800 = Local (sin cobro)
         if (preg_match('/^800\d+$/', $destination)) {
             return 'Local';
         }
-        // Línea 600 = Nacional (con cobro)
+        // Linea 600 = Nacional (con cobro)
         if (preg_match('/^600\d+$/', $destination)) {
             return 'Nacional';
         }
@@ -148,7 +148,7 @@ class Call extends Model
         if (preg_match('/^9\d{8}$/', $destination)) {
             return 'Celular';
         }
-        // Celular Chile con código país: +569XXXXXXXX o 569XXXXXXXX
+        // Celular Chile con codigo pais: +569XXXXXXXX o 569XXXXXXXX
         if (preg_match('/^(\+?56)9\d{8}$/', $destination)) {
             return 'Celular';
         }

@@ -12,7 +12,7 @@ class ExtensionController extends Controller
     
     public function update(Request $request)
     {
-        // 1. Validación de datos
+        // 1. Validacion de datos
         $request->validate([
             'extension' => 'required|string', 
             'first_name' => 'nullable|string|max:255',
@@ -29,8 +29,8 @@ class ExtensionController extends Controller
             return back()->with('error', 'Anexo no encontrado en base de datos local');
         }
 
-        // 2. FASE DE CONEXIÓN A GRANDSTREAM
-        // Cookie de sesión
+        // 2. FASE DE CONEXION A GRANDSTREAM
+        // Cookie de sesion
         $ip = config('services.grandstream.host');
         $port = config('services.grandstream.port', '7110');
         $user = config('services.grandstream.user');
@@ -46,7 +46,7 @@ class ExtensionController extends Controller
         // Buscamos el usuario en la central para obtener su 'user_id'
         $infoUser = $this->connectApi($apiUrl, 'getUser', ['user_name' => $request->extension], $cookie);
         
-        // Lógica para extraer el ID sin importar cómo responda el JSON
+        // Logica para extraer el ID sin importar como responda el JSON
         $datosRaw = $infoUser['response']['user_name'] 
                  ?? $infoUser['response'][$request->extension] 
                  ?? $infoUser['response'];
@@ -58,7 +58,7 @@ class ExtensionController extends Controller
         }
 
         // 4. PREPARAR DATOS PARA LA API
-        // A. Permisos (Traducción de BD a la API)
+        // A. Permisos (Traduccion de BD a la API)
         $permisoApi = 'internal'; 
         if ($request->permission == 'International') $permisoApi = 'internal-local-national-international';
         elseif ($request->permission == 'National')  $permisoApi = 'internal-local-national';
@@ -88,7 +88,7 @@ class ExtensionController extends Controller
             'permission' => $permisoApi
         ], $cookie);
 
-        // 6. VERIFICAR SI TODO SALIÓ BIEN
+        // 6. VERIFICAR SI TODO SALIO BIEN
         if (($respIdentity['status'] ?? -1) == 0 && ($respSip['status'] ?? -1) == 0) {
             
             // Aplicar cambios (Commit en la central)
@@ -108,9 +108,9 @@ class ExtensionController extends Controller
             return back()->with('success', " Anexo {$request->extension} actualizado en BD y Central Telefónica.");
 
         } else {
-            // Si falló la API, devolvemos el error y NO guardamos en local para evitar desincronización
+            // Si fallo la API, devolvemos el error y NO guardamos en local para evitar desincronizacion
             $msgError = $respSip['response']['body'] ?? 'Error desconocido en la central';
-            return back()->with('error', " Falló la actualización en la Central: $msgError");
+            return back()->with('error', " Fallo la actualización en la Central: $msgError");
         }
     }
 
@@ -130,12 +130,12 @@ class ExtensionController extends Controller
     }
 
     /**
-     * Crear una nueva extensión en la Central Grandstream UCM6300 y en la BD local
+     * Crear una nueva extension en la Central Grandstream UCM6300 y en la BD local
      * Usa la API addSIPAccountAndUser
      */
     public function store(Request $request)
     {
-        // 1. Validación de datos
+        // 1. Validacion de datos
         $request->validate([
             'extension' => 'required|string|regex:/^[0-9]+$/|unique:extensions,extension',
             'password' => 'required|string',
@@ -149,7 +149,7 @@ class ExtensionController extends Controller
             'password_confirmation.same' => 'Las contraseñas no coinciden.',
         ]);
 
-        // 2. FASE DE CONEXIÓN A GRANDSTREAM
+        // 2. FASE DE CONEXION A GRANDSTREAM
         $ip = config('services.grandstream.host');
         $port = config('services.grandstream.port', '7110');
         $user = config('services.grandstream.user');
@@ -161,7 +161,7 @@ class ExtensionController extends Controller
             return back()->with('error', 'Error: No se pudo conectar con la Central Telefónica. Verifique la red.');
         }
 
-        // 3. CREAR EXTENSIÓN EN LA CENTRAL (addSIPAccountAndUser)
+        // 3. CREAR EXTENSION EN LA CENTRAL (addSIPAccountAndUser)
         // Basado en la documentación oficial del UCM6300
         $createParams = [
             'extension' => $request->extension,
@@ -182,17 +182,17 @@ class ExtensionController extends Controller
 
         $respCreate = $this->connectApi($apiUrl, 'addSIPAccountAndUser', $createParams, $cookie);
 
-        // 4. VERIFICAR RESULTADO DE LA CREACIÓN
+        // 4. VERIFICAR RESULTADO DE LA CREACION
         $statusCode = $respCreate['status'] ?? -999;
         if ($statusCode != 0) {
             $msgError = $respCreate['response']['body'] ?? $respCreate['response']['message'] ?? json_encode($respCreate);
-            return back()->with('error', "Falló la creación en la Central (código: {$statusCode}): {$msgError}");
+            return back()->with('error', "Fallo la creacion en la Central (codigo: {$statusCode}): {$msgError}");
         }
 
         // 5. APLICAR CAMBIOS EN LA CENTRAL (Commit)
         $this->connectApi($apiUrl, 'applyChanges', [], $cookie);
 
-        // 6. GUARDAR EN BASE DE DATOS LOCAL (solo si la central lo creó exitosamente)
+        // 6. GUARDAR EN BASE DE DATOS LOCAL (solo si la central lo creo exitosamente)
         try {
             Extension::create([
                 'extension' => $request->extension,
@@ -201,11 +201,11 @@ class ExtensionController extends Controller
                 'max_contacts' => 1,
             ]);
         } catch (\Exception $e) {
-            return back()->with('error', "El anexo se creó en la Central, pero falló el guardado local: {$e->getMessage()}");
+            return back()->with('error', "El anexo se creo en la Central, pero fallo el guardado local: {$e->getMessage()}");
         }
 
         return redirect()->route('extension.index', ['anexo' => $request->extension])
-                         ->with('success', "Anexo {$request->extension} creado exitosamente. Puede editarlo para agregar más detalles.");
+                         ->with('success', "Anexo {$request->extension} creado exitosamente. Puede editarlo para agregar mas detalles.");
     }
 
     public function index(Request $request)
@@ -225,7 +225,7 @@ class ExtensionController extends Controller
     }
 
     // ==========================================
-    //  MÉTODOS PRIVADOS DE CONEXIÓN 
+    //  METODOS PRIVADOS DE CONEXION 
     // ==========================================
 
     private function connectApi($url, $action, $params = [], $cookie = null)

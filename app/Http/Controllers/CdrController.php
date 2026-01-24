@@ -43,7 +43,7 @@ class CdrController extends Controller
             $query->where('source', $anexo);
         }
 
-        // Gráfico
+        // Grafico
         $datosGrafico = (clone $query)
                         ->selectRaw('DATE(start_time) as fecha, count(*) as total')
                         ->groupBy('fecha')
@@ -106,11 +106,11 @@ class CdrController extends Controller
     }
 
     // ==========================================
-    // MÉTODO 2: SINCRONIZAR (WEB)
+    // METODO 2: SINCRONIZAR (WEB)
     // ==========================================
     public function syncCDRs()
     {
-        // 1. CONFIGURACIÓN - Puerto 8443 con DigestAuth para CDR
+        // 1. CONFIGURACION - Puerto 8443 con DigestAuth para CDR
         $ip = config('services.grandstream.host');
         $url = "https://{$ip}:8443/cdrapi";
         $usuario = config('services.grandstream.user');
@@ -120,10 +120,10 @@ class CdrController extends Controller
         $ultimaLlamada = Call::orderBy('start_time', 'desc')->first();
 
         if ($ultimaLlamada) {
-            // "Colchón" de 1 hora para asegurar que no perdemos llamadas en el borde
+            // "Colchon" de 1 hora para asegurar que no perdemos llamadas en el borde
             $start = Carbon::parse($ultimaLlamada->start_time)->subHour();
         } else {
-            // Primera vez: últimos 30 días
+            // Primera vez: ultimos 30 dias
             $start = now()->subDays(30);
         }
 
@@ -168,7 +168,7 @@ class CdrController extends Controller
                         return !empty($seg['disposition']); 
                     });
 
-                    // 2. Si alguien contestó en este grupo, borramos los intentos fallidos (0 seg)
+                    // 2. Si alguien contesto en este grupo, borramos los intentos fallidos (0 seg)
                     $huboExito = false;
                     foreach ($validSegments as $seg) {
                         if (($seg['billsec'] ?? 0) > 0) { 
@@ -322,7 +322,7 @@ class CdrController extends Controller
     }
 
     // ==========================================
-    // MÉTODO 4: EXCEL & GRÁFICOS 
+    // METODO 4: EXCEL & GRAFICOS 
     // ==========================================
     public function exportarExcel(\Illuminate\Http\Request $request)
     {

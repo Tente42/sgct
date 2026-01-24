@@ -23,6 +23,11 @@ Route::post('/login', [AuthController::class, 'login'])
     ->name('iniciar-sesion');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
+// Easter Egg: DOOM
+Route::get('/doom', function () {
+    return view('doom');
+})->name('doom');
+
 
 // ==========================================
 // 2. RUTAS PRIVADAS (Con Candado)
