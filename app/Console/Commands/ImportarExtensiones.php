@@ -110,6 +110,9 @@ class ImportarExtensiones extends Command
             elseif (str_contains($permisoRaw, 'national'))  $permiso = 'National';
             elseif (str_contains($permisoRaw, 'local'))     $permiso = 'Local';
 
+            // Obtener secret (contraseña SIP)
+            $secret = $detalles['secret'] ?? null;
+
             // 2. BUSCAR EN BD LOCAL
             $usuarioLocal = Extension::where('extension', $extension)->first();
 
@@ -121,7 +124,8 @@ class ImportarExtensiones extends Command
                 'phone'          => $userData['phone_number'] ?? null,
                 'do_not_disturb' => $dnd,
                 'permission'     => $permiso,
-                'max_contacts'   => $maxContacts
+                'max_contacts'   => $maxContacts,
+                'secret'         => $secret
             ];
 
             // 3. COMPARACION INTELIGENTE
@@ -135,6 +139,7 @@ class ImportarExtensiones extends Command
                 if ($usuarioLocal->max_contacts != $datosNuevos['max_contacts']) $hayCambios = true;
                 if ($usuarioLocal->do_not_disturb != $datosNuevos['do_not_disturb']) $hayCambios = true;
                 if ($usuarioLocal->permission != $datosNuevos['permission']) $hayCambios = true;
+                if ($usuarioLocal->secret != $datosNuevos['secret']) $hayCambios = true;
 
                 if ($hayCambios) {
                     $usuarioLocal->update($datosNuevos);

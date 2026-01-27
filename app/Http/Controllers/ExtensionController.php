@@ -21,6 +21,10 @@ class ExtensionController extends Controller
             'phone' => 'nullable|string|max:50',
             'permission' => 'required|in:Internal,Local,National,International',
             'max_contacts' => 'required|integer|min:1|max:10',
+            'secret' => ['nullable', 'string', 'min:5', 'regex:/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d!@#$%^&*()_+\-=\[\]{};:\'",.<>?\\\|`~]+$/'],
+        ], [
+            'secret.min' => 'La contraseña SIP debe tener al menos 5 caracteres.',
+            'secret.regex' => 'La contraseña SIP debe contener al menos una letra y un número (puede incluir caracteres especiales).',
         ]);
 
         $extensionLocal = Extension::where('extension', $request->extension)->first();
@@ -80,13 +84,20 @@ class ExtensionController extends Controller
             'phone_number' => $request->phone 
         ], $cookie);
 
-        // Petición 2: Configuración SIP (Permisos, Contactos, DND)
-        $respSip = $this->connectApi($apiUrl, 'updateSIPAccount', [
+        // Petición 2: Configuración SIP (Permisos, Contactos, DND, Secret)
+        $sipData = [
             'extension' => $request->extension,
             'max_contacts' => (int)$request->max_contacts,
             'dnd' => $dndApi,
             'permission' => $permisoApi
-        ], $cookie);
+        ];
+
+        // Solo incluir secret si se proporciona (para cambiar contraseña SIP)
+        if ($request->filled('secret')) {
+            $sipData['secret'] = $request->secret;
+        }
+
+        $respSip = $this->connectApi($apiUrl, 'updateSIPAccount', $sipData, $cookie);
 
         // 6. VERIFICAR SI TODO SALIO BIEN
         if (($respIdentity['status'] ?? -1) == 0 && ($respSip['status'] ?? -1) == 0) {
@@ -95,7 +106,7 @@ class ExtensionController extends Controller
             $this->connectApi($apiUrl, 'applyChanges', [], $cookie);
 
             // 7. ACTUALIZAR BASE DE DATOS LOCAL
-            $extensionLocal->update([
+            $updateData = [
                 'first_name' => $request->first_name,
                 'last_name' => $request->last_name,
                 'email' => $request->email,
@@ -103,13 +114,25 @@ class ExtensionController extends Controller
                 'permission' => $request->permission, 
                 'do_not_disturb' => $request->boolean('do_not_disturb'),
                 'max_contacts' => $request->max_contacts,
-            ]);
+            ];
+
+            // Si se proporcionó un nuevo secret, guardarlo también en local
+            if ($request->filled('secret')) {
+                $updateData['secret'] = $request->secret;
+            }
+
+            $extensionLocal->update($updateData);
 
             return back()->with('success', " Anexo {$request->extension} actualizado en BD y Central Telefónica.");
 
         } else {
-            // Si fallo la API, devolvemos el error y NO guardamos en local para evitar desincronizacion
-            $msgError = $respSip['response']['body'] ?? 'Error desconocido en la central';
+            // Mostrar error más detallado
+            $statusIdentity = $respIdentity['status'] ?? 'N/A';
+            $statusSip = $respSip['status'] ?? 'N/A';
+            $msgIdentity = $respIdentity['response']['body'] ?? json_encode($respIdentity['response'] ?? []);
+            $msgSip = $respSip['response']['body'] ?? json_encode($respSip['response'] ?? []);
+            
+            $msgError = "Identity(status:{$statusIdentity}): {$msgIdentity} | SIP(status:{$statusSip}): {$msgSip}";
             return back()->with('error', " Fallo la actualización en la Central: $msgError");
         }
     }

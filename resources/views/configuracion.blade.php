@@ -167,7 +167,7 @@
                      x-transition:leave="ease-in duration-200"
                      x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
                      x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                     class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+                     class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-2xl">
                     
                     <form method="POST" action="{{ route('extension.update') }}">
                         @csrf
@@ -268,6 +268,20 @@
                                         <option value="9">9</option>
                                         <option value="10">10</option>
                                     </select>
+                                </div>
+
+                                <!-- Secret (SIP/IAX Password) -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">
+                                        <i class="fas fa-key text-gray-400 mr-1"></i> Contraseña SIP/IAX
+                                    </label>
+                                    <input type="password" 
+                                           name="secret" 
+                                           x-model="formData.secret"
+                                           minlength="5"
+                                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                           placeholder="Mín. 5 caracteres (letra + número)">
+                                    <p class="text-xs text-gray-500 mt-1">Debe contener al menos una letra y un número. Puede incluir caracteres especiales.</p>
                                 </div>
 
                                 <!-- DND (Do Not Disturb) -->
@@ -448,7 +462,8 @@
                     phone: '',
                     permission: 'Internal',
                     do_not_disturb: false,
-                    max_contacts: 1
+                    max_contacts: 1,
+                    secret: ''
                 },
                 createFormData: {
                     extension: '',
@@ -457,7 +472,7 @@
                 },
                 
                 openModal(data) {
-                    this.formData = { ...data };
+                    this.formData = { ...data, secret: '' };
                     this.showModal = true;
                     document.body.style.overflow = 'hidden';
                 },

@@ -20,6 +20,7 @@ class Extension extends Model
         'permission',
         'do_not_disturb',
         'max_contacts',
+        'secret',
     ];
 
     // Casting de tipos para campos especificos

@@ -162,57 +162,41 @@ class CdrController extends Controller
                         continue;
                     }
 
-                    // B. FILTRO DE LIMPIEZA
-                    // 1. Quitar fantasmas sin estado
+                    // B. FILTRO DE LIMPIEZA - Quitar fantasmas sin estado
                     $validSegments = array_filter($validSegments, function($seg) {
                         return !empty($seg['disposition']); 
                     });
 
-                    // 2. Si alguien contesto en este grupo, borramos los intentos fallidos (0 seg)
-                    $huboExito = false;
-                    foreach ($validSegments as $seg) {
-                        if (($seg['billsec'] ?? 0) > 0) { 
-                            $huboExito = true; 
-                            break; 
-                        }
+                    if (empty($validSegments)) {
+                        continue;
                     }
 
-                    if ($huboExito) {
-                        $validSegments = array_filter($validSegments, function($seg) {
-                            return ($seg['billsec'] ?? 0) > 0;
-                        });
+                    // C. CONSOLIDAR LLAMADA (Buscar anexo y sumar tiempos)
+                    $consolidated = $this->consolidateCall($validSegments);
+
+                    if (empty($consolidated)) {
+                        continue;
                     }
 
-                    // C. GUARDAR EN BASE DE DATOS
-                    foreach ($validSegments as $record) {
-                        
-                        // Generación de ID Inteligente (Prioridad AcctId)
-                        if (!empty($record['acctid'])) {
-                            $uniqueKey = $record['acctid'];
-                        } else {
-                            $baseId = $record['uniqueid'] ?? md5($record['start']);
-                            $uniqueKey = $baseId . '_' . ($record['dst'] ?? 'x');
-                        }
+                    // D. GUARDAR REGISTRO CONSOLIDADO
+                    $call = Call::updateOrCreate(
+                        ['unique_id' => $consolidated['unique_id']], 
+                        [
+                            'start_time'    => $consolidated['start_time'],
+                            'source'        => $consolidated['source'],
+                            'destination'   => $consolidated['destination'],
+                            'duration'      => $consolidated['duration'],
+                            'billsec'       => $consolidated['billsec'],
+                            'disposition'   => $consolidated['disposition'],
+                            'caller_name'   => $consolidated['caller_name'],
+                            'recording_file'=> $consolidated['recording_file'],
+                        ]
+                    );
 
-                        $call = Call::updateOrCreate(
-                            ['unique_id' => $uniqueKey], 
-                            [
-                                'start_time'    => $record['start'],
-                                'source'        => $record['src'] ?? 'Desconocido',
-                                'destination'   => $record['dst'] ?? 'Desconocido',
-                                'duration'      => $record['duration'] ?? 0,
-                                'billsec'       => $record['billsec'] ?? 0,
-                                'disposition'   => $record['disposition'] ?? 'UNKNOWN',
-                                'caller_name'   => $record['caller_name'] ?? null,
-                                'recording_file'=> $record['recordfiles'] ?? null,
-                            ]
-                        );
-
-                        if ($call->wasRecentlyCreated) {
-                            $contadorNuevas++;
-                        } else {
-                            $contadorActualizadas++;
-                        }
+                    if ($call->wasRecentlyCreated) {
+                        $contadorNuevas++;
+                    } else {
+                        $contadorActualizadas++;
                     }
                 }
 
@@ -249,6 +233,142 @@ class CdrController extends Controller
         }
 
         return $collected;
+    }
+
+    /**
+     * Consolida todos los segmentos de una llamada en un solo registro.
+     * - Busca el anexo (4 dígitos) como origen principal
+     * - Suma los tiempos de todos los segmentos
+     * - Determina el destino externo (número no-anexo)
+     */
+    private function consolidateCall(array $segments): array
+    {
+        if (empty($segments)) {
+            return [];
+        }
+
+        $segments = array_values($segments);
+
+        $anexoOrigen = null;
+        $numeroExterno = null;
+        $totalBillsec = 0;
+        $totalDuration = 0;
+        $startTime = null;
+        $disposition = 'NO ANSWER';
+        $callerName = null;
+        $recordingFile = null;
+        $uniqueId = null;
+
+        $firstSeg = $segments[0];
+        $firstSrc = $firstSeg['src'] ?? '';
+        $firstDst = $firstSeg['dst'] ?? '';
+
+        $esEntrante = $this->esNumeroExterno($firstSrc) && $this->esAnexo($firstDst);
+        $esSaliente = $this->esAnexo($firstSrc) && $this->esNumeroExterno($firstDst);
+        $esInterna = $this->esAnexo($firstSrc) && $this->esAnexo($firstDst);
+
+        foreach ($segments as $seg) {
+            $src = $seg['src'] ?? '';
+            $dst = $seg['dst'] ?? '';
+            $billsec = (int)($seg['billsec'] ?? 0);
+            $duration = (int)($seg['duration'] ?? 0);
+
+            if ($startTime === null || (isset($seg['start']) && $seg['start'] < $startTime)) {
+                $startTime = $seg['start'] ?? null;
+            }
+
+            if ($uniqueId === null) {
+                $uniqueId = $seg['acctid'] ?? $seg['uniqueid'] ?? null;
+            }
+
+            $totalBillsec += $billsec;
+            $totalDuration += $duration;
+
+            if ($esEntrante) {
+                if ($this->esAnexo($dst) && $anexoOrigen === null) {
+                    $anexoOrigen = $dst;
+                }
+                if ($this->esNumeroExterno($src) && $numeroExterno === null) {
+                    $numeroExterno = $src;
+                }
+            } elseif ($esSaliente || $esInterna) {
+                if ($this->esAnexo($src) && $anexoOrigen === null) {
+                    $anexoOrigen = $src;
+                }
+                if ($numeroExterno === null) {
+                    $numeroExterno = $dst;
+                }
+            } else {
+                if ($this->esAnexo($src) && $anexoOrigen === null) {
+                    $anexoOrigen = $src;
+                } elseif ($this->esAnexo($dst) && $anexoOrigen === null) {
+                    $anexoOrigen = $dst;
+                }
+                if ($this->esNumeroExterno($dst) && $numeroExterno === null) {
+                    $numeroExterno = $dst;
+                } elseif ($this->esNumeroExterno($src) && $numeroExterno === null) {
+                    $numeroExterno = $src;
+                }
+            }
+
+            if (empty($callerName) && !empty($seg['caller_name'])) {
+                $callerName = $seg['caller_name'];
+            }
+
+            if (empty($recordingFile) && !empty($seg['recordfiles'])) {
+                $recordingFile = $seg['recordfiles'];
+            }
+
+            if ($billsec > 0) {
+                $disposition = 'ANSWERED';
+            }
+        }
+
+        if ($anexoOrigen === null) {
+            $anexoOrigen = $firstSrc ?: 'Desconocido';
+        }
+
+        if ($numeroExterno === null) {
+            $numeroExterno = $firstDst ?: 'Desconocido';
+        }
+
+        if ($disposition !== 'ANSWERED' && !empty($segments)) {
+            foreach ($segments as $seg) {
+                $disp = strtoupper($seg['disposition'] ?? '');
+                if (strpos($disp, 'BUSY') !== false) {
+                    $disposition = 'BUSY';
+                    break;
+                } elseif (strpos($disp, 'FAILED') !== false) {
+                    $disposition = 'FAILED';
+                }
+            }
+        }
+
+        if ($uniqueId === null) {
+            $uniqueId = md5($startTime . $anexoOrigen . $numeroExterno);
+        }
+
+        return [
+            'unique_id'     => $uniqueId,
+            'start_time'    => $startTime,
+            'source'        => $anexoOrigen,
+            'destination'   => $numeroExterno,
+            'duration'      => $totalDuration,
+            'billsec'       => $totalBillsec,
+            'disposition'   => $disposition,
+            'caller_name'   => $callerName,
+            'recording_file'=> $recordingFile,
+        ];
+    }
+
+    private function esAnexo(string $numero): bool
+    {
+        return preg_match('/^\d{3,4}$/', $numero) === 1;
+    }
+
+    private function esNumeroExterno(string $numero): bool
+    {
+        return preg_match('/^(\+|\d{5,})/', $numero) === 1;
     }
 
     // ==========================================
