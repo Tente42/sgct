@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Extension;
 use App\Http\Controllers\IPController;
-use Illuminate\Support\Facades\Http; // Importante para las peticiones
+use Illuminate\Support\Facades\Http;
+use App\Traits\GrandstreamTrait;
 
 class ExtensionController extends Controller
 {
+    use GrandstreamTrait;
     
     public function update(Request $request)
     {
@@ -33,22 +35,15 @@ class ExtensionController extends Controller
             return back()->with('error', 'Anexo no encontrado en base de datos local');
         }
 
-        // 2. FASE DE CONEXION A GRANDSTREAM
-        // Cookie de sesion
-        $ip = config('services.grandstream.host');
-        $port = config('services.grandstream.port', '7110');
-        $user = config('services.grandstream.user');
-        $pass = config('services.grandstream.pass');
-        $apiUrl = "https://{$ip}:{$port}/api";
-        $cookie = $this->getCookie($apiUrl, $user, $pass);
-
-        if (!$cookie) {
+        // 2. FASE DE CONEXION A GRANDSTREAM (usando el trait)
+        // Verificar conexión
+        if (!$this->testConnection()) {
             return back()->with('error', ' Error: No se pudo conectar con la Central Telefónica. Verifique la red.');
         }
 
         // 3. OBTENER ID INTERNO (Necesario para updateUser)
         // Buscamos el usuario en la central para obtener su 'user_id'
-        $infoUser = $this->connectApi($apiUrl, 'getUser', ['user_name' => $request->extension], $cookie);
+        $infoUser = $this->connectApi('getUser', ['user_name' => $request->extension]);
         
         // Logica para extraer el ID sin importar como responda el JSON
         $datosRaw = $infoUser['response']['user_name'] 
@@ -75,14 +70,14 @@ class ExtensionController extends Controller
         // 5. ENVIAR CAMBIOS A LA CENTRAL
         
         // Petición 1: Datos de Identidad (Nombre, Apellido, Email, Teléfono)
-        $respIdentity = $this->connectApi($apiUrl, 'updateUser', [
+        $respIdentity = $this->connectApi('updateUser', [
             'user_id' => (int)$userId,
             'user_name' => $request->extension,
             'first_name' => $request->first_name, 
             'last_name' => $request->last_name,
             'email' => $request->email,
             'phone_number' => $request->phone 
-        ], $cookie);
+        ]);
 
         // Petición 2: Configuración SIP (Permisos, Contactos, DND, Secret)
         $sipData = [
@@ -97,13 +92,13 @@ class ExtensionController extends Controller
             $sipData['secret'] = $request->secret;
         }
 
-        $respSip = $this->connectApi($apiUrl, 'updateSIPAccount', $sipData, $cookie);
+        $respSip = $this->connectApi('updateSIPAccount', $sipData);
 
         // 6. VERIFICAR SI TODO SALIO BIEN
         if (($respIdentity['status'] ?? -1) == 0 && ($respSip['status'] ?? -1) == 0) {
             
             // Aplicar cambios (Commit en la central)
-            $this->connectApi($apiUrl, 'applyChanges', [], $cookie);
+            $this->connectApi('applyChanges');
 
             // 7. ACTUALIZAR BASE DE DATOS LOCAL
             $updateData = [
@@ -172,15 +167,8 @@ class ExtensionController extends Controller
             'password_confirmation.same' => 'Las contraseñas no coinciden.',
         ]);
 
-        // 2. FASE DE CONEXION A GRANDSTREAM
-        $ip = config('services.grandstream.host');
-        $port = config('services.grandstream.port', '7110');
-        $user = config('services.grandstream.user');
-        $pass = config('services.grandstream.pass');
-        $apiUrl = "https://{$ip}:{$port}/api";
-        $cookie = $this->getCookie($apiUrl, $user, $pass);
-
-        if (!$cookie) {
+        // 2. FASE DE CONEXION A GRANDSTREAM (usando el trait)
+        if (!$this->testConnection()) {
             return back()->with('error', 'Error: No se pudo conectar con la Central Telefónica. Verifique la red.');
         }
 
@@ -203,7 +191,7 @@ class ExtensionController extends Controller
             'moh' => 'default',                           // Music on Hold
         ];
 
-        $respCreate = $this->connectApi($apiUrl, 'addSIPAccountAndUser', $createParams, $cookie);
+        $respCreate = $this->connectApi('addSIPAccountAndUser', $createParams);
 
         // 4. VERIFICAR RESULTADO DE LA CREACION
         $statusCode = $respCreate['status'] ?? -999;
@@ -213,7 +201,7 @@ class ExtensionController extends Controller
         }
 
         // 5. APLICAR CAMBIOS EN LA CENTRAL (Commit)
-        $this->connectApi($apiUrl, 'applyChanges', [], $cookie);
+        $this->connectApi('applyChanges');
 
         // 6. GUARDAR EN BASE DE DATOS LOCAL (solo si la central lo creo exitosamente)
         try {
@@ -245,45 +233,5 @@ class ExtensionController extends Controller
         $ips = $ipController->getExtensionIps();
 
         return view('configuracion', compact('extensions', 'anexo', 'ips'));
-    }
-
-    // ==========================================
-    //  METODOS PRIVADOS DE CONEXION 
-    // ==========================================
-
-    private function connectApi($url, $action, $params = [], $cookie = null)
-    {
-        try {
-            return Http::withoutVerifying()
-                ->timeout(5)
-                ->post($url, [
-                    'request' => array_merge(['action' => $action, 'cookie' => $cookie], $params)
-                ])->json();
-        } catch (\Exception $e) {
-            return ['status' => -500, 'response' => ['body' => $e->getMessage()]];
-        }
-    }
-
-    private function getCookie($url, $user, $pass)
-    {
-        try {
-            // 1. Challenge
-            $ch = Http::withoutVerifying()->post($url, [
-                'request' => ['action' => 'challenge', 'user' => $user, 'version' => '1.0']
-            ])->json();
-            
-            $challenge = $ch['response']['challenge'] ?? '';
-            if (!$challenge) return null;
-
-            // 2. Login
-            $token = md5($challenge . $pass);
-            $login = Http::withoutVerifying()->post($url, [
-                'request' => ['action' => 'login', 'user' => $user, 'token' => $token]
-            ])->json();
-
-            return $login['response']['cookie'] ?? null;
-        } catch (\Exception $e) {
-            return null;
-        }
     }
 }

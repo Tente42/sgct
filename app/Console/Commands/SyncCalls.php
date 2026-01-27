@@ -3,29 +3,16 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
 use App\Models\Call;
+use App\Traits\GrandstreamTrait;
 
 class SyncCalls extends Command
 {
+    use GrandstreamTrait;
+
     protected $signature = 'calls:sync {--year=2026}';
-    protected $description = 'Sincronizador Inteligente con Auto-Limpieza';
-
-    protected $ip;
-    protected $user;
-    protected $pass;
-    protected $cdrUrl;
-
-    public function __construct()
-    {
-        parent::__construct();
-        $this->ip = config('services.grandstream.host'); // IP o dominio del PBX Grandstream
-        $this->user = config('services.grandstream.user'); // Usuario con permisos de API   
-        $this->pass = config('services.grandstream.pass'); // Contraseña del usuario API
-        // Puerto 8443 con DigestAuth para CDR
-        $this->cdrUrl = "https://{$this->ip}:8443/cdrapi";
-    }
+    protected $description = 'Sincronizador Inteligente con Auto-Limpieza (usa Cookie Auth)';
 
     public function handle()
     {
@@ -37,8 +24,8 @@ class SyncCalls extends Command
 
         $this->info("============================================");
         $this->info("  SINCRONIZADOR CON FILTRO DE LIMPIEZA");
+        $this->info("  (Método: Cookie Auth - Puerto 7110)");
         $this->info("============================================");
-        $this->info("  URL: {$this->cdrUrl}");
 
         while ($startDate->lessThanOrEqualTo($now)) {
             
@@ -49,91 +36,84 @@ class SyncCalls extends Command
             $this->line(" Consultando: " . $start->format('Y-m-d H:i') . " -> " . $end->format('Y-m-d H:i'));
 
             try {
-                // Usar DigestAuth en puerto 8443
-                $response = Http::withDigestAuth($this->user, $this->pass)
-                    ->timeout(60)
-                    ->withoutVerifying()
-                    ->get($this->cdrUrl, [
-                        'format'    => 'JSON',
-                        'startTime' => $start->format('Y-m-d\TH:i:s'), 
-                        'endTime'   => $end->format('Y-m-d\TH:i:s'),
-                        'minDur'    => 0 
-                    ]);
+                // Usar Cookie Auth a través del trait (puerto 7110)
+                // FORMATO DE FECHA: YYYY-MM-DDTHH:MM:SS (la T es obligatoria)
+                $data = $this->connectApi('cdrapi', [
+                    'format' => 'json',
+                    'startTime' => $start->format('Y-m-d\TH:i:s'),
+                    'endTime' => $end->format('Y-m-d\TH:i:s'),
+                    'minDur' => 0
+                ], 120); // Timeout de 120s para rangos grandes
 
-                if ($response->successful()) {
-                    $data = $response->json();
-                    $calls = $data['cdr_root'] ?? [];
-                    $count = count($calls);
+                $calls = $data['cdr_root'] ?? [];
+                $count = count($calls);
 
-                    $this->info("    Paquetes recibidos: {$count}");
+                $this->info("    Paquetes recibidos: {$count}");
 
-                    if ($count > 0) {
-                        $bar = $this->output->createProgressBar($count);
-                        $bar->start();
-                        $nuevas = 0; $actualizadas = 0;
+                if ($count > 0) {
+                    $bar = $this->output->createProgressBar($count);
+                    $bar->start();
+                    $nuevas = 0; $actualizadas = 0;
 
-                        foreach ($calls as $cdrPacket) {
-                            
-                            // 1. RECOLECTAR TODO
-                            $validSegments = $this->collectAllSegments($cdrPacket);
+                    foreach ($calls as $cdrPacket) {
+                        
+                        // 1. RECOLECTAR TODO
+                        $validSegments = $this->collectAllSegments($cdrPacket);
 
-                            if (empty($validSegments)) {
-                                $bar->advance();
-                                continue;
-                            }
-
-                            // --- 2. FILTRO ---
-                            
-                            // A. Eliminar registros "fantasmas" (main_cdr sin estado)
-                            $validSegments = array_filter($validSegments, function($seg) {
-                                return !empty($seg['disposition']); 
-                            });
-
-                            if (empty($validSegments)) {
-                                $bar->advance();
-                                continue;
-                            }
-
-                            // --- 3. CONSOLIDAR LLAMADA (Buscar anexo y sumar tiempos) ---
-                            $consolidated = $this->consolidateCall($validSegments);
-
-                            if (empty($consolidated)) {
-                                $bar->advance();
-                                continue;
-                            }
-
-                            // --- 4. GUARDAR REGISTRO CONSOLIDADO ---
-                            $uniqueKey = $consolidated['unique_id'];
-
-                            if (Call::where('unique_id', $uniqueKey)->exists()) {
-                                $actualizadas++;
-                            } else {
-                                $nuevas++;
-                            }
-
-                            Call::updateOrCreate(
-                                ['unique_id' => $uniqueKey], 
-                                [
-                                    'start_time'    => $consolidated['start_time'],
-                                    'source'        => $consolidated['source'],
-                                    'destination'   => $consolidated['destination'],
-                                    'duration'      => $consolidated['duration'],
-                                    'billsec'       => $consolidated['billsec'],
-                                    'disposition'   => $consolidated['disposition'],
-                                    'caller_name'   => $consolidated['caller_name'],
-                                    'recording_file'=> $consolidated['recording_file'],
-                                ]
-                            );
-
+                        if (empty($validSegments)) {
                             $bar->advance();
+                            continue;
                         }
-                        $bar->finish();
-                        $this->newLine();
-                        $this->info("    Registros DB: $nuevas Nuevos | $actualizadas Actualizados");
-                        $this->newLine();
+
+                        // --- 2. FILTRO ---
+                        
+                        // A. Eliminar registros "fantasmas" (main_cdr sin estado)
+                        $validSegments = array_filter($validSegments, function($seg) {
+                            return !empty($seg['disposition']); 
+                        });
+
+                        if (empty($validSegments)) {
+                            $bar->advance();
+                            continue;
+                        }
+
+                        // --- 3. CONSOLIDAR LLAMADA (Buscar anexo y sumar tiempos) ---
+                        $consolidated = $this->consolidateCall($validSegments);
+
+                        if (empty($consolidated)) {
+                            $bar->advance();
+                            continue;
+                        }
+
+                        // --- 4. GUARDAR REGISTRO CONSOLIDADO ---
+                        $uniqueKey = $consolidated['unique_id'];
+
+                        if (Call::where('unique_id', $uniqueKey)->exists()) {
+                            $actualizadas++;
+                        } else {
+                            $nuevas++;
+                        }
+
+                        Call::updateOrCreate(
+                            ['unique_id' => $uniqueKey], 
+                            [
+                                'start_time'    => $consolidated['start_time'],
+                                'source'        => $consolidated['source'],
+                                'destination'   => $consolidated['destination'],
+                                'duration'      => $consolidated['duration'],
+                                'billsec'       => $consolidated['billsec'],
+                                'disposition'   => $consolidated['disposition'],
+                                'caller_name'   => $consolidated['caller_name'],
+                                'recording_file'=> $consolidated['recording_file'],
+                            ]
+                        );
+
+                        $bar->advance();
                     }
-                } else {
-                    $this->error("    Error HTTP: " . $response->status());
+                    $bar->finish();
+                    $this->newLine();
+                    $this->info("    Registros DB: $nuevas Nuevos | $actualizadas Actualizados");
+                    $this->newLine();
                 }
             } catch (\Exception $e) {
                 $this->error("    Error: " . $e->getMessage());

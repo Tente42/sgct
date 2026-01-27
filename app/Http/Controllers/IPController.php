@@ -5,33 +5,28 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Extension;
 use Illuminate\Support\Facades\Http;
+use App\Traits\GrandstreamTrait;
 
 class IPController extends Controller
 {
+    use GrandstreamTrait;
+
     public function index()
     {
-        // 1. Conexion a la Central Grandstream
-        $ip = config('services.grandstream.host');
-        $port = config('services.grandstream.port', '7110');
-        $user = config('services.grandstream.user');
-        $pass = config('services.grandstream.pass');
-        $apiUrl = "https://{$ip}:{$port}/api";
-        
-        $cookie = $this->getCookie($apiUrl, $user, $pass);
-
-        // 2. Datos locales
+        // 1. Datos locales
         $localExtensions = Extension::with('department')->get()->keyBy('extension');
 
         $monitorList = [];
 
-        if ($cookie) {
+        // 2. Verificar conexión y obtener datos en vivo
+        if ($this->testConnection()) {
             // 3. Datos en vivo (listAccount)
-            $liveData = $this->connectApi($apiUrl, 'listAccount', [
+            $liveData = $this->connectApi('listAccount', [
                 'options'  => 'extension,status,addr,fullname',
                 'item_num' => 1000,
                 'sidx'     => 'extension',
                 'sord'     => 'asc'
-            ], $cookie);
+            ]);
             
             // Ajuste para leer 'account' o 'body->account' según versión de firmware
             $rawAccounts = $liveData['response']['account'] ?? 
@@ -69,23 +64,15 @@ class IPController extends Controller
      */
     public function getExtensionIps()
     {
-        $ip = config('services.grandstream.host');
-        $port = config('services.grandstream.port', '7110');
-        $user = config('services.grandstream.user');
-        $pass = config('services.grandstream.pass');
-        $apiUrl = "https://{$ip}:{$port}/api";
-        
-        $cookie = $this->getCookie($apiUrl, $user, $pass);
-        
         $ips = [];
 
-        if ($cookie) {
-            $liveData = $this->connectApi($apiUrl, 'listAccount', [
+        if ($this->testConnection()) {
+            $liveData = $this->connectApi('listAccount', [
                 'options'  => 'extension,addr',
                 'item_num' => 1000,
                 'sidx'     => 'extension',
                 'sord'     => 'asc'
-            ], $cookie);
+            ]);
 
             $rawAccounts = $liveData['response']['account'] ?? 
                            $liveData['response']['body']['account'] ?? [];
@@ -101,45 +88,5 @@ class IPController extends Controller
         }
 
         return $ips;
-    }
-
-    // ==========================================
-    //  METODOS PRIVADOS DE CONEXION 
-    // ==========================================
-
-    private function connectApi($url, $action, $params = [], $cookie = null)
-    {
-        try {
-            return Http::withoutVerifying()
-                ->timeout(5)
-                ->post($url, [
-                    'request' => array_merge(['action' => $action, 'cookie' => $cookie], $params)
-                ])->json();
-        } catch (\Exception $e) {
-            return ['status' => -500, 'response' => ['body' => $e->getMessage()]];
-        }
-    }
-
-    private function getCookie($url, $user, $pass)
-    {
-        try {
-            // 1. Challenge
-            $ch = Http::withoutVerifying()->post($url, [
-                'request' => ['action' => 'challenge', 'user' => $user, 'version' => '1.0']
-            ])->json();
-            
-            $challenge = $ch['response']['challenge'] ?? '';
-            if (!$challenge) return null;
-
-            // 2. Login
-            $token = md5($challenge . $pass);
-            $login = Http::withoutVerifying()->post($url, [
-                'request' => ['action' => 'login', 'user' => $user, 'token' => $token]
-            ])->json();
-
-            return $login['response']['cookie'] ?? null;
-        } catch (\Exception $e) {
-            return null;
-        }
     }
 }

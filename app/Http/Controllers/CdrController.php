@@ -10,9 +10,11 @@ use Illuminate\Support\Facades\Log;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Exports\CallsExport;
 use Maatwebsite\Excel\Facades\Excel;
+use App\Traits\GrandstreamTrait;
 
 class CdrController extends Controller
 {
+    use GrandstreamTrait;
     // ==========================================
     // MÉTODO 1: DASHBOARD (Sin cambios)
     // ==========================================
@@ -110,13 +112,7 @@ class CdrController extends Controller
     // ==========================================
     public function syncCDRs()
     {
-        // 1. CONFIGURACION - Puerto 8443 con DigestAuth para CDR
-        $ip = config('services.grandstream.host');
-        $url = "https://{$ip}:8443/cdrapi";
-        $usuario = config('services.grandstream.user');
-        $password = config('services.grandstream.pass');
-
-        // 2. DEFINIR RANGO DE TIEMPO INCREMENTAL
+        // 1. DEFINIR RANGO DE TIEMPO INCREMENTAL
         $ultimaLlamada = Call::orderBy('start_time', 'desc')->first();
 
         if ($ultimaLlamada) {
@@ -130,29 +126,26 @@ class CdrController extends Controller
         $end = now(); 
 
         try {
-            // 3. CONECTAR A LA API CON DIGEST AUTH (Puerto 8443)
-            $response = Http::withDigestAuth($usuario, $password)
-                ->timeout(60)
-                ->withoutVerifying()
-                ->get($url, [
-                    'format' => 'JSON',
-                    'startTime' => $start->format('Y-m-d\TH:i:s'),
-                    'endTime' => $end->format('Y-m-d\TH:i:s'),
-                    'minDur' => 0
-                ]);
+            // 2. CONECTAR A LA API (usando el trait - puerto 7110 con Cookie Auth)
+            // FORMATO DE FECHA: YYYY-MM-DDTHH:MM:SS (la T es obligatoria)
+            $response = $this->connectApi('cdrapi', [
+                'format' => 'json',
+                'startTime' => $start->format('Y-m-d\TH:i:s'),
+                'endTime' => $end->format('Y-m-d\TH:i:s'),
+                'minDur' => 0
+            ], 120); // Timeout de 120 segundos para CDRs
 
-            if ($response->successful()) {
-                $data = $response->json();
+            if (($response['status'] ?? -1) == 0 || isset($response['cdr_root'])) {
                 
-                if (!isset($data['cdr_root']) || empty($data['cdr_root'])) {
+                if (!isset($response['cdr_root']) || empty($response['cdr_root'])) {
                     return back()->with('success', 'Conexión exitosa. No hay llamadas nuevas.');
                 }
 
-                $calls = $data['cdr_root'];
+                $calls = $response['cdr_root'];
                 $contadorNuevas = 0;
                 $contadorActualizadas = 0;
 
-                // 4. PROCESAMIENTO 
+                // 3. PROCESAMIENTO 
                 foreach ($calls as $cdrPacket) {
                     
                     // A. RECOLECTAR TODOS LOS TRAMOS (Recursividad)
@@ -203,7 +196,8 @@ class CdrController extends Controller
                 return back()->with('success', "Sincronización: {$contadorNuevas} nuevas, {$contadorActualizadas} actualizadas.");
 
             } else {
-                return back()->with('error', 'Error Central HTTP: ' . $response->status());
+                $errorMsg = $response['response']['body'] ?? json_encode($response);
+                return back()->with('error', 'Error Central: ' . $errorMsg);
             }
 
         } catch (\Exception $e) {

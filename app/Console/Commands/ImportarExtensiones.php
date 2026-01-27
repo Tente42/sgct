@@ -3,28 +3,15 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Http;
 use App\Models\Extension;
+use App\Traits\GrandstreamTrait;
 
 class ImportarExtensiones extends Command
 {
+    use GrandstreamTrait;
+
     protected $signature = 'extensions:import {target? : La extensión específica a sincronizar}';
-    protected $description = 'Sincroniza usuarios de forma inteligente (Solo guarda si hay cambios).';
-
-    protected $ip;
-    protected $user;
-    protected $pass;
-    protected $apiUrl;
-
-    public function __construct()
-    {
-        parent::__construct();
-        $this->ip = config('services.grandstream.host');
-        $this->user = config('services.grandstream.user');
-        $this->pass = config('services.grandstream.pass');
-        $port = config('services.grandstream.port', '7110');
-        $this->apiUrl = "https://{$this->ip}:{$port}/api";
-    }
+    protected $description = 'Sincroniza usuarios de forma inteligente (Solo guarda si hay cambios). Usa Cookie Auth.';
 
     public function handle()
     {
@@ -33,35 +20,34 @@ class ImportarExtensiones extends Command
 
         $this->info("============================================");
         $this->info("  SINCRONIZADOR - MODO: $modo");
+        $this->info("  (Método: Cookie Auth - Trait)");
         $this->info("============================================");
 
-        $cookie = $this->hacerLogin();
-        if (!$cookie) {
-            $this->error(" Error de Login.");
-            return;
+        // Verificar conexión
+        if (!$this->testConnection()) {
+            $this->error(" Error de Login. Verifica configuración.");
+            return 1;
         }
+        $this->info(" ✅ Conexión exitosa!");
 
         // --- OBTENCION DE DATOS ---
         $listaUsuarios = [];
 
         if ($target) {
             // Modo Rapido (1 usuario)
-            $userInfo = $this->enviarAccion($cookie, 'getUser', ['user_name' => $target]);
+            $userInfo = $this->connectApi('getUser', ['user_name' => $target]);
             if (($userInfo['status'] ?? -1) == 0) {
                  $userDat = $userInfo['response']['user_name'] ?? $userInfo['response'][$target] ?? $userInfo['response'];
                  $listaUsuarios = [$userDat];
             } else {
                 $this->error(" Extensión no encontrada.");
-                return;
+                return 1;
             }
         } else {
             // Modo Masivo
             $this->line(" Descargando lista maestra...");
-            $response = Http::withoutVerifying()->timeout(30)->post($this->apiUrl, [
-                'request' => ['action' => 'listUser', 'cookie' => $cookie]
-            ]);
-            $json = json_decode($response->body(), true);
-            $responseBlock = $json['response'] ?? [];
+            $response = $this->connectApi('listUser', [], 30);
+            $responseBlock = $response['response'] ?? [];
 
             if (isset($responseBlock['user']) && is_array($responseBlock['user'])) {
                 $listaUsuarios = $responseBlock['user'];
@@ -76,7 +62,7 @@ class ImportarExtensiones extends Command
         }
 
         $total = count($listaUsuarios);
-        if ($total == 0) { $this->error(" Lista vacía."); return; }
+        if ($total == 0) { $this->error(" Lista vacía."); return 1; }
 
         $this->info(" Analizando {$total} usuarios...");
         
@@ -92,7 +78,7 @@ class ImportarExtensiones extends Command
             $extension = $userData['user_name'] ?? $target; 
 
             // 1. Obtener Datos Frescos de la API
-            $sipData = $this->enviarAccion($cookie, 'getSIPAccount', ['extension' => $extension]);
+            $sipData = $this->connectApi('getSIPAccount', ['extension' => $extension], 10);
             
             $detalles = [];
             if (($sipData['status'] ?? -1) == 0) {
@@ -171,21 +157,7 @@ class ImportarExtensiones extends Command
                 ['TOTAL', $total]
             ]
         );
-    }
 
-    // --- CONEXION ---
-    private function hacerLogin() { /* (Igual que antes) */
-        try {
-            $ch = Http::withoutVerifying()->post($this->apiUrl, ['request'=>['action'=>'challenge','user'=>$this->user,'version'=>'1.0']])->json();
-            $token = md5(($ch['response']['challenge']??'') . $this->pass);
-            $login = Http::withoutVerifying()->post($this->apiUrl, ['request'=>['action'=>'login','user'=>$this->user,'token'=>$token]])->json();
-            return $login['response']['cookie'] ?? null;
-        } catch (\Exception $e) { return null; }
-    }
-
-    private function enviarAccion($cookie, $accion, $params = []) { /* (Igual que antes) */
-        try {
-            return Http::withoutVerifying()->timeout(10)->post($this->apiUrl, ['request'=>array_merge(['action'=>$accion,'cookie'=>$cookie],$params)])->json();
-        } catch (\Exception $e) { return ['status'=>-500]; }
+        return 0;
     }
 }

@@ -36,7 +36,7 @@ return [
     ],
     'grandstream' => [
         'host' => env('GRANDSTREAM_IP'), // IP o dominio del PBX Grandstream
-        'port' => env('GRANDSTREAM_PORT', '7110'), // Puerto API 
+        'port' => env('GRANDSTREAM_PORT'), // Puerto API 
         'user' => env('GRANDSTREAM_USER'), // Usuario con permisos de API
         'pass' => env('GRANDSTREAM_PASS'), // Contraseña del usuario API
         'verify_ssl' => env('GRANDSTREAM_VERIFY_SSL', false), // Verificar SSL (true/false)
