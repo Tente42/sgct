@@ -15,11 +15,11 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        // Primero crear la conexión PBX (necesaria antes de calls/extensions)
+        $this->call(PbxConnectionSeeder::class);
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        // Luego los demás seeders
+        $this->call(SettingSeeder::class);
+        $this->call(UserSeeder::class);
     }
 }

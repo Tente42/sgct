@@ -4,7 +4,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CdrController;
 use App\Http\Controllers\ExtensionController;
 use App\Http\Controllers\SettingController;
-use App\Http\Controllers\AuthController; 
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\PbxConnectionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -30,10 +31,23 @@ Route::get('/doom', function () {
 
 
 // ==========================================
-// 2. RUTAS PRIVADAS (Con Candado)
+// 2. RUTAS DE GESTIÓN DE CENTRALES PBX
 // ==========================================
-// Todo lo que esté aquí dentro REQUIERE haber iniciado sesión.
-Route::middleware(['auth'])->group(function () {
+// Estas rutas requieren auth pero NO requieren central seleccionada
+Route::middleware(['auth'])->prefix('pbx')->name('pbx.')->group(function () {
+    Route::get('/', [PbxConnectionController::class, 'index'])->name('index');
+    Route::post('/', [PbxConnectionController::class, 'store'])->name('store');
+    Route::put('/{pbx}', [PbxConnectionController::class, 'update'])->name('update');
+    Route::delete('/{pbx}', [PbxConnectionController::class, 'destroy'])->name('destroy');
+    Route::get('/select/{pbx}', [PbxConnectionController::class, 'select'])->name('select');
+    Route::post('/disconnect', [PbxConnectionController::class, 'disconnect'])->name('disconnect');
+});
+
+
+// ==========================================
+// 3. RUTAS PRIVADAS (Requieren auth + central seleccionada)
+// ==========================================
+Route::middleware(['auth', 'pbx.selected'])->group(function () {
     
     // Panel Principal
     Route::get('/', [CdrController::class, 'index'])->name('home');

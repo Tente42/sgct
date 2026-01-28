@@ -172,8 +172,12 @@ class CdrController extends Controller
                     }
 
                     // D. GUARDAR REGISTRO CONSOLIDADO
+                    // Incluimos pbx_connection_id en la búsqueda para la clave única compuesta
                     $call = Call::updateOrCreate(
-                        ['unique_id' => $consolidated['unique_id']], 
+                        [
+                            'pbx_connection_id' => session('active_pbx_id'),
+                            'unique_id' => $consolidated['unique_id']
+                        ], 
                         [
                             'start_time'    => $consolidated['start_time'],
                             'source'        => $consolidated['source'],

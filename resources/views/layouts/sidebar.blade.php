@@ -51,6 +51,21 @@
     <!-- Logout - SIEMPRE VISIBLE EN LA PARTE INFERIOR -->
     <div class="border-t border-gray-700 p-4 flex-shrink-0">
         @auth
+        {{-- Mostrar central activa y botón cambiar --}}
+        @if(session('active_pbx_name'))
+        <div class="mb-3 text-center">
+            <span class="text-xs text-gray-400">Central activa:</span>
+            <p class="text-sm text-green-400 font-semibold truncate" title="{{ session('active_pbx_name') }}">
+                <i class="fas fa-server mr-1"></i>{{ session('active_pbx_name') }}
+            </p>
+        </div>
+        @endif
+        
+        <a href="{{ route('pbx.index') }}" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded transition flex items-center justify-center gap-2 mb-3">
+            <i class="fas fa-exchange-alt"></i>
+            <span>Cambiar Central</span>
+        </a>
+
         <form method="POST" action="{{ route('logout') }}">
             @csrf
             <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition flex items-center justify-center gap-2">

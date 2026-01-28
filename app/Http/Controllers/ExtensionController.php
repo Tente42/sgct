@@ -140,7 +140,10 @@ class ExtensionController extends Controller
         ]);
 
         Extension::updateOrCreate(
-            ['extension' => $request->extension_id],
+            [
+                'pbx_connection_id' => session('active_pbx_id'),
+                'extension' => $request->extension_id
+            ],
             ['fullname' => $request->fullname]
         );
 
@@ -206,6 +209,7 @@ class ExtensionController extends Controller
         // 6. GUARDAR EN BASE DE DATOS LOCAL (solo si la central lo creo exitosamente)
         try {
             Extension::create([
+                'pbx_connection_id' => session('active_pbx_id'),
                 'extension' => $request->extension,
                 'permission' => 'Internal',
                 'do_not_disturb' => false,

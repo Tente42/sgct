@@ -4,14 +4,38 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Builder;
 use App\Models\Setting;
 
 class Call extends Model
 {
     use HasFactory;
 
+    /**
+     * Boot del modelo - Registrar Global Scope para Multi-Tenant
+     */
+    protected static function booted(): void
+    {
+        // Global Scope: Filtrar llamadas por la central activa
+        static::addGlobalScope('current_pbx', function (Builder $builder) {
+            // Solo aplicar si hay usuario logueado Y central seleccionada
+            if (auth()->check() && session()->has('active_pbx_id')) {
+                $builder->where('pbx_connection_id', session('active_pbx_id'));
+            }
+        });
+
+        // Auto-asignar pbx_connection_id al crear nuevas llamadas
+        static::creating(function ($call) {
+            if (empty($call->pbx_connection_id) && session()->has('active_pbx_id')) {
+                $call->pbx_connection_id = session('active_pbx_id');
+            }
+        });
+    }
+
     // --- LISTA DE PERMISOS ---
     protected $fillable = [
+        'pbx_connection_id', // ID de la central PBX
         'unique_id',      // ID unico de la central
         'start_time',     // Hora inicio
         'end_time',       // Hora fin
@@ -23,6 +47,14 @@ class Call extends Model
         'disposition',    // Estado (ANSWERED, BUSY, etc.)
         'recording_file', // Archivo de grabacion (si existe)
     ];
+
+    /**
+     * Relación: Una llamada pertenece a una conexión PBX
+     */
+    public function pbxConnection(): BelongsTo
+    {
+        return $this->belongsTo(PbxConnection::class);
+    }
 
     // --- ACCESSORS ---
     // Cache estatico para tarifas (evita multiples consultas a BD)
