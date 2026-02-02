@@ -13,6 +13,7 @@
                 <span class="text-gray-500 text-sm">Generado: {{ date('d/m/Y H:i') }}</span>
             </div>
             
+            @if(Auth::user()->isAdmin())
             <form action="{{ route('cdr.sync') }}" method="POST" class="inline">
                 @csrf
                 <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded shadow-md"
@@ -20,6 +21,7 @@
                     <i class="fas fa-cloud-download-alt"></i> Sincronizar Ahora
                 </button>
             </form>
+            @endif
         </div>
 
         @if(session('success'))

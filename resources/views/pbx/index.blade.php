@@ -248,7 +248,12 @@
         <div class="header">
             <h1><i class="fas fa-phone-volume"></i> {{ config('app.name') }}</h1>
             <div class="header-right">
-                <span class="user-info"><i class="fas fa-user"></i> {{ auth()->user()->name }}</span>
+                <span class="user-info">
+                    <i class="fas fa-user"></i> {{ auth()->user()->name }}
+                    @if(auth()->user()->isAdmin())
+                        <span style="background: #ffc107; color: #333; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; margin-left: 5px;">Admin</span>
+                    @endif
+                </span>
                 <form action="{{ route('logout') }}" method="POST" style="margin:0;">
                     @csrf
                     <button type="submit" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Salir</button>
@@ -277,9 +282,11 @@
         <div class="page-title">
             <h2><i class="fas fa-server"></i> Seleccionar Central</h2>
             <p>Elige la central telefónica con la que deseas trabajar</p>
+            @if(auth()->user()->isAdmin())
             <button @click="openCreateModal()" class="btn-add">
                 <i class="fas fa-plus"></i> Agregar Nueva Central
             </button>
+            @endif
         </div>
 
         {{-- Grid de Centrales --}}
@@ -310,18 +317,25 @@
                             </div>
 
                             @if(session('active_pbx_id') === $connection->id)
+                                @if(auth()->user()->isAdmin())
                                 <form action="{{ route('pbx.disconnect') }}" method="POST">
                                     @csrf
                                     <button type="submit" class="btn-disconnect">
                                         <i class="fas fa-power-off"></i> DESCONECTAR
                                     </button>
                                 </form>
+                                @else
+                                <div style="padding: 10px; background: #e9ecef; border-radius: 4px; text-align: center; color: #666; margin-bottom: 10px;">
+                                    <i class="fas fa-check-circle" style="color: #28a745;"></i> Central Activa
+                                </div>
+                                @endif
                             @else
                                 <a href="{{ route('pbx.select', $connection) }}" class="btn-connect">
                                     <i class="fas fa-plug"></i> CONECTAR
                                 </a>
                             @endif
 
+                            @if(auth()->user()->isAdmin())
                             <div class="card-actions">
                                 <button @click="openEditModal({{ $connection->toJson() }})" class="btn-edit">
                                     <i class="fas fa-edit"></i> Editar
@@ -332,6 +346,7 @@
                                     <i class="fas fa-trash"></i> Eliminar
                                 </button>
                             </div>
+                            @endif
                         </div>
                     </div>
                 @endforeach

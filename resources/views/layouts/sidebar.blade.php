@@ -32,7 +32,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                     </span>
-                    <span class="ml-2 text-sm tracking-wide truncate">Editar anexos</span>
+                    <span class="ml-2 text-sm tracking-wide truncate">Anexos</span>
                 </a>
             </li>
             <li>
@@ -75,6 +75,11 @@
         </form>
         <div class="mt-3 text-center text-sm text-gray-400">
             <p>{{ Auth::user()->name }}</p>
+            @if(Auth::user()->isAdmin())
+                <span class="inline-block mt-1 px-2 py-0.5 text-xs font-semibold bg-yellow-500 text-yellow-900 rounded-full">Administrador</span>
+            @else
+                <span class="inline-block mt-1 px-2 py-0.5 text-xs font-semibold bg-gray-600 text-gray-300 rounded-full">Usuario</span>
+            @endif
         </div>
         @endauth
         @guest

@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Registrar alias de middleware personalizado
         $middleware->alias([
             'pbx.selected' => \App\Http\Middleware\CheckPbxSelected::class,
+            'admin' => \App\Http\Middleware\AdminMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

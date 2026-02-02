@@ -53,14 +53,16 @@
                                        id="{{ $setting->key }}"
                                        value="{{ $setting->value }}"
                                        min="0"
-                                       class="w-full pl-8 pr-4 py-2 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-lg font-semibold"
-                                       placeholder="0">
+                                       class="w-full pl-8 pr-4 py-2 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-lg font-semibold {{ Auth::user()->isAdmin() ? '' : 'bg-gray-100 cursor-not-allowed' }}"
+                                       placeholder="0"
+                                       {{ Auth::user()->isAdmin() ? '' : 'readonly' }}>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Precio en pesos por minuto</p>
                         </div>
                     @endforeach
                 </div>
 
+                @if(Auth::user()->isAdmin())
                 <div class="mt-6 pt-4 border-t flex justify-end">
                     <button type="submit" 
                             class="inline-flex items-center gap-2 px-6 py-3 rounded-md bg-blue-600 text-white font-semibold hover:bg-blue-700 shadow-sm transition-colors">
@@ -68,6 +70,14 @@
                         <span>Guardar Cambios</span>
                     </button>
                 </div>
+                @else
+                <div class="mt-6 pt-4 border-t">
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-700">
+                        <i class="fas fa-lock mr-1"></i>
+                        Solo los administradores pueden modificar las tarifas.
+                    </div>
+                </div>
+                @endif
             </form>
         </div>
 

@@ -36,14 +36,18 @@ Route::get('/doom', function () {
 // Estas rutas requieren auth pero NO requieren central seleccionada
 Route::middleware(['auth'])->prefix('pbx')->name('pbx.')->group(function () {
     Route::get('/', [PbxConnectionController::class, 'index'])->name('index');
-    Route::post('/', [PbxConnectionController::class, 'store'])->name('store');
-    Route::put('/{pbx}', [PbxConnectionController::class, 'update'])->name('update');
-    Route::delete('/{pbx}', [PbxConnectionController::class, 'destroy'])->name('destroy');
     Route::get('/select/{pbx}', [PbxConnectionController::class, 'select'])->name('select');
-    Route::get('/setup/{pbx}', [PbxConnectionController::class, 'setup'])->name('setup');
-    Route::post('/sync/{pbx}', [PbxConnectionController::class, 'syncInitial'])->name('syncInitial');
     Route::get('/sync-status/{pbx}', [PbxConnectionController::class, 'checkSyncStatus'])->name('syncStatus');
-    Route::post('/disconnect', [PbxConnectionController::class, 'disconnect'])->name('disconnect');
+    
+    // Solo administradores pueden crear, modificar, eliminar y sincronizar centrales
+    Route::middleware(['admin'])->group(function () {
+        Route::post('/', [PbxConnectionController::class, 'store'])->name('store');
+        Route::put('/{pbx}', [PbxConnectionController::class, 'update'])->name('update');
+        Route::delete('/{pbx}', [PbxConnectionController::class, 'destroy'])->name('destroy');
+        Route::get('/setup/{pbx}', [PbxConnectionController::class, 'setup'])->name('setup');
+        Route::post('/sync/{pbx}', [PbxConnectionController::class, 'syncInitial'])->name('syncInitial');
+        Route::post('/disconnect', [PbxConnectionController::class, 'disconnect'])->name('disconnect');
+    });
 });
 
 
@@ -52,21 +56,23 @@ Route::middleware(['auth'])->prefix('pbx')->name('pbx.')->group(function () {
 // ==========================================
 Route::middleware(['auth', 'pbx.selected'])->group(function () {
     
-    // Panel Principal
+    // Panel Principal (Todos los usuarios)
     Route::get('/', [CdrController::class, 'index'])->name('home');
     Route::get('/dashboard', [CdrController::class, 'index'])->name('dashboard');
     Route::get('/graficos', [CdrController::class, 'showCharts'])->name('cdr.charts');
     Route::get('/configuracion', [ExtensionController::class, 'index'])->name('extension.index');
 
-    // Funciones del Sistema
-    Route::post('/sync', [CdrController::class, 'syncCDRs'])->name('cdr.sync');
+    // Funciones de solo lectura (Todos los usuarios)
     Route::get('/export-pdf', [CdrController::class, 'descargarPDF'])->name('cdr.pdf');
-    Route::post('/extension/update', [ExtensionController::class, 'update'])->name('extension.update');
-    Route::post('/extension/update-ips', [ExtensionController::class, 'updateIps'])->name('extension.updateIps');
     Route::get('/exportar-excel', [App\Http\Controllers\CdrController::class, 'exportarExcel'])->name('calls.export');
-
-    // Configuración de Tarifas
     Route::get('/tarifas', [SettingController::class, 'index'])->name('settings.index');
-    Route::post('/tarifas', [SettingController::class, 'update'])->name('settings.update');
+
+    // Funciones que requieren administrador (llamadas a API)
+    Route::middleware(['admin'])->group(function () {
+        Route::post('/sync', [CdrController::class, 'syncCDRs'])->name('cdr.sync');
+        Route::post('/extension/update', [ExtensionController::class, 'update'])->name('extension.update');
+        Route::post('/extension/update-ips', [ExtensionController::class, 'updateIps'])->name('extension.updateIps');
+        Route::post('/tarifas', [SettingController::class, 'update'])->name('settings.update');
+    });
 
 });
