@@ -41,6 +41,7 @@ class Extension extends Model
         'fullname',
         'email',
         'phone',
+        'ip',
         'permission',
         'do_not_disturb',
         'max_contacts',

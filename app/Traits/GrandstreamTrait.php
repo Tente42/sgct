@@ -81,4 +81,25 @@ trait GrandstreamTrait
     {
         return $this->getGrandstreamService()->getPbxConnectionId();
     }
+
+    /**
+     * Configurar el servicio con una central específica (útil para comandos de consola)
+     * 
+     * @param int $pbxId ID de la central PBX
+     * @return bool True si se configuró correctamente
+     */
+    protected function configurePbx(int $pbxId): bool
+    {
+        $connection = \App\Models\PbxConnection::find($pbxId);
+        
+        if (!$connection) {
+            return false;
+        }
+
+        $this->grandstreamService = null; // Reset cached instance
+        $service = $this->getGrandstreamService();
+        $service->setConnectionFromModel($connection);
+
+        return true;
+    }
 }

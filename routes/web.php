@@ -40,6 +40,9 @@ Route::middleware(['auth'])->prefix('pbx')->name('pbx.')->group(function () {
     Route::put('/{pbx}', [PbxConnectionController::class, 'update'])->name('update');
     Route::delete('/{pbx}', [PbxConnectionController::class, 'destroy'])->name('destroy');
     Route::get('/select/{pbx}', [PbxConnectionController::class, 'select'])->name('select');
+    Route::get('/setup/{pbx}', [PbxConnectionController::class, 'setup'])->name('setup');
+    Route::post('/sync/{pbx}', [PbxConnectionController::class, 'syncInitial'])->name('syncInitial');
+    Route::get('/sync-status/{pbx}', [PbxConnectionController::class, 'checkSyncStatus'])->name('syncStatus');
     Route::post('/disconnect', [PbxConnectionController::class, 'disconnect'])->name('disconnect');
 });
 
@@ -59,7 +62,7 @@ Route::middleware(['auth', 'pbx.selected'])->group(function () {
     Route::post('/sync', [CdrController::class, 'syncCDRs'])->name('cdr.sync');
     Route::get('/export-pdf', [CdrController::class, 'descargarPDF'])->name('cdr.pdf');
     Route::post('/extension/update', [ExtensionController::class, 'update'])->name('extension.update');
-    Route::post('/extension/store', [ExtensionController::class, 'store'])->name('extension.store');
+    Route::post('/extension/update-ips', [ExtensionController::class, 'updateIps'])->name('extension.updateIps');
     Route::get('/exportar-excel', [App\Http\Controllers\CdrController::class, 'exportarExcel'])->name('calls.export');
 
     // Configuración de Tarifas

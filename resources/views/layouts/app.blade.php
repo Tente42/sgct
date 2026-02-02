@@ -21,6 +21,60 @@
     <!-- Sidebar - Parte Izquierda -->
     @include('layouts.sidebar')
 
+    <!-- Indicador de Sincronización en Segundo Plano -->
+    @auth
+        @if(session('active_pbx_id'))
+            <div id="syncIndicator" 
+                 class="fixed bottom-4 right-4 z-50 hidden"
+                 style="max-width: 350px;">
+                <div class="bg-white rounded-lg shadow-2xl border border-blue-200 overflow-hidden">
+                    <div class="bg-blue-600 px-4 py-2 flex items-center gap-2">
+                        <i class="fas fa-sync-alt fa-spin text-white"></i>
+                        <span class="text-white font-semibold text-sm">Sincronización en Progreso</span>
+                    </div>
+                    <div class="px-4 py-3">
+                        <p id="syncProgressText" class="text-gray-600 text-sm">Cargando...</p>
+                        <div class="mt-2 w-full bg-gray-200 rounded-full h-1.5">
+                            <div class="bg-blue-600 h-1.5 rounded-full animate-pulse" style="width: 100%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <script>
+                (function() {
+                    const pbxId = {{ session('active_pbx_id') }};
+                    const indicator = document.getElementById('syncIndicator');
+                    const progressText = document.getElementById('syncProgressText');
+                    
+                    function checkSync() {
+                        fetch(`/pbx/sync-status/${pbxId}`)
+                            .then(r => r.json())
+                            .then(data => {
+                                if (data.syncing) {
+                                    indicator.classList.remove('hidden');
+                                    progressText.textContent = data.progress || 'Sincronizando...';
+                                    
+                                    // Cambiar color si hay error
+                                    if (data.progress && data.progress.includes('❌')) {
+                                        indicator.querySelector('.bg-blue-600').classList.replace('bg-blue-600', 'bg-red-600');
+                                    } else if (data.progress && data.progress.includes('✓')) {
+                                        indicator.querySelector('.bg-blue-600')?.classList.replace('bg-blue-600', 'bg-green-600');
+                                    }
+                                } else {
+                                    indicator.classList.add('hidden');
+                                }
+                            })
+                            .catch(() => {});
+                    }
+                    
+                    // Verificar cada 2 segundos
+                    checkSync();
+                    setInterval(checkSync, 2000);
+                })();
+            </script>
+        @endif
+    @endauth
+
     <!-- Main content - Con margen para el sidebar fijo -->
     <div class="flex flex-col min-h-screen" style="margin-left: 16rem;">
         <!-- Page Heading -->

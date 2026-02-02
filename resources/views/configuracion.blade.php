@@ -13,12 +13,14 @@
                     <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-cog me-2"></i>Gestión de Anexos</h3>
                     <span class="text-gray-500 text-sm">Total de anexos: {{ $extensions->total() }}</span>
                 </div>
-                <button type="button" 
-                        @click="openCreateModal()"
-                        class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-green-600 text-white font-semibold hover:bg-green-700 shadow-sm transition-colors">
-                    <i class="fas fa-plus"></i>
-                    <span>Crear Nuevo Anexo</span>
-                </button>
+                <form method="POST" action="{{ route('extension.updateIps') }}" class="inline">
+                    @csrf
+                    <button type="submit" 
+                            class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 text-white font-semibold hover:bg-blue-700 shadow-sm transition-colors">
+                        <i class="fas fa-sync-alt"></i>
+                        <span>Actualizar IPs</span>
+                    </button>
+                </form>
             </div>
         </div>
 
@@ -89,8 +91,8 @@
                                 {{ $extension->phone ?? '-' }}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                <span class="font-mono {{ isset($ips[$extension->extension]) ? 'text-green-600' : 'text-gray-400' }}">
-                                    {{ $ips[$extension->extension] ?? '---' }}
+                                <span class="font-mono {{ $extension->ip ? 'text-green-600' : 'text-gray-400' }}">
+                                    {{ $extension->ip ?? '---' }}
                                 </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm">
@@ -324,126 +326,6 @@
             </div>
         </div>
 
-        <!-- Modal de Creación -->
-        <div x-show="showCreateModal" 
-             x-cloak
-             class="fixed inset-0 z-50 overflow-y-auto" 
-             aria-labelledby="modal-create-title" 
-             role="dialog" 
-             aria-modal="true">
-            
-            <!-- Fondo oscuro -->
-            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
-                 @click="closeCreateModal()"></div>
-
-            <!-- Contenedor del modal -->
-            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-                <div x-show="showCreateModal"
-                     @click.stop
-                     x-transition:enter="ease-out duration-300"
-                     x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                     x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
-                     x-transition:leave="ease-in duration-200"
-                     x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
-                     x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
-                     class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
-                    
-                    <form method="POST" action="{{ route('extension.store') }}" @submit="createFormSubmitting = true">
-                        @csrf
-                        
-                        <!-- Header del Modal -->
-                        <div class="bg-green-700 px-4 py-3">
-                            <h3 class="text-lg font-bold text-white flex items-center gap-2">
-                                <i class="fas fa-user-plus"></i>
-                                Crear Nuevo Anexo
-                            </h3>
-                        </div>
-
-                        <!-- Body del Modal -->
-                        <div class="bg-white px-4 pt-5 pb-4 sm:p-6">
-                            
-                            <!-- Mensaje de error si existe -->
-                            <div x-show="createError" x-text="createError" class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded text-sm"></div>
-                            
-                            <p class="text-sm text-gray-600 mb-4">
-                                <i class="fas fa-info-circle text-blue-500 mr-1"></i>
-                                Crea el anexo con su contraseña. Luego podrás editarlo para agregar nombre, email y otros detalles.
-                            </p>
-
-                            <div class="space-y-4">
-                                
-                                <!-- Extension (Número de Anexo) -->
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                                        <i class="fas fa-phone-alt text-gray-400 mr-1"></i> Número de Anexo <span class="text-red-500">*</span>
-                                    </label>
-                                    <input type="text" 
-                                           name="extension" 
-                                           x-model="createFormData.extension"
-                                           required
-                                           pattern="[0-9]+"
-                                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"
-                                           placeholder="Ej: 1001">
-                                    <p class="text-xs text-gray-500 mt-1">Número único de extensión</p>
-                                </div>
-
-                                <!-- Password -->
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                                        <i class="fas fa-lock text-gray-400 mr-1"></i> Contraseña <span class="text-red-500">*</span>
-                                    </label>
-                                    <input type="password" 
-                                           name="password" 
-                                           x-model="createFormData.password"
-                                           required
-                                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"
-                                           placeholder="Ingrese la contraseña">
-                                    <p class="text-xs text-gray-500 mt-1">Se usará para SIP, Voicemail y acceso de usuario</p>
-                                </div>
-
-                                <!-- Confirmar Password -->
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">
-                                        <i class="fas fa-lock text-gray-400 mr-1"></i> Confirmar Contraseña <span class="text-red-500">*</span>
-                                    </label>
-                                    <input type="password" 
-                                           name="password_confirmation" 
-                                           x-model="createFormData.password_confirmation"
-                                           required
-                                           class="w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500"
-                                           :class="createFormData.password && createFormData.password_confirmation && createFormData.password !== createFormData.password_confirmation ? 'border-red-500 ring-red-500' : ''"
-                                           placeholder="Repita la contraseña">
-                                    <p x-show="createFormData.password && createFormData.password_confirmation && createFormData.password !== createFormData.password_confirmation" 
-                                       class="text-xs text-red-600 mt-1">
-                                        <i class="fas fa-exclamation-circle mr-1"></i>Las contraseñas no coinciden
-                                    </p>
-                                </div>
-
-                            </div>
-                        </div>
-
-                        <!-- Footer del Modal -->
-                        <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 gap-2">
-                            <button type="submit" 
-                                    :disabled="createFormSubmitting || !createFormData.extension || !createFormData.password || !createFormData.password_confirmation || createFormData.password !== createFormData.password_confirmation"
-                                    :class="(createFormSubmitting || !createFormData.extension || !createFormData.password || !createFormData.password_confirmation || createFormData.password !== createFormData.password_confirmation) ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-500'"
-                                    class="inline-flex w-full justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm sm:ml-3 sm:w-auto">
-                                <i class="fas fa-save mr-2" x-show="!createFormSubmitting"></i>
-                                <i class="fas fa-spinner fa-spin mr-2" x-show="createFormSubmitting"></i>
-                                <span x-text="createFormSubmitting ? 'Creando...' : 'Crear Anexo'"></span>
-                            </button>
-                            <button type="button" 
-                                    @click="closeCreateModal()"
-                                    :disabled="createFormSubmitting"
-                                    class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto">
-                                <i class="fas fa-times mr-2"></i> Cancelar
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
     </div>
 
     @push('scripts')
@@ -451,9 +333,6 @@
         function extensionEditor() {
             return {
                 showModal: false,
-                showCreateModal: false,
-                createFormSubmitting: false,
-                createError: '',
                 formData: {
                     extension: '',
                     first_name: '',
@@ -465,11 +344,6 @@
                     max_contacts: 1,
                     secret: ''
                 },
-                createFormData: {
-                    extension: '',
-                    password: '',
-                    password_confirmation: ''
-                },
                 
                 openModal(data) {
                     this.formData = { ...data, secret: '' };
@@ -480,25 +354,6 @@
                 closeModal() {
                     this.showModal = false;
                     document.body.style.overflow = '';
-                },
-
-                openCreateModal() {
-                    this.createFormData = {
-                        extension: '',
-                        password: '',
-                        password_confirmation: ''
-                    };
-                    this.createError = '';
-                    this.createFormSubmitting = false;
-                    this.showCreateModal = true;
-                    document.body.style.overflow = 'hidden';
-                },
-
-                closeCreateModal() {
-                    if (!this.createFormSubmitting) {
-                        this.showCreateModal = false;
-                        document.body.style.overflow = '';
-                    }
                 }
             }
         }

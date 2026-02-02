@@ -12,12 +12,14 @@ Panel de administración y monitoreo de llamadas para centrales telefónicas **G
 ##  Características
 
 -  **Dashboard interactivo** con estadísticas de llamadas
+-  **Sistema Multi-Central** - Gestiona múltiples centrales PBX desde una sola interfaz
 -  **Sincronización automática** de CDRs desde la central Grandstream
--  **Gestión de extensiones** con estado en tiempo real
+-  **Gestión de extensiones** con actualización de IPs bajo demanda
 -  **Gráficos y reportes** de llamadas entrantes, salientes y perdidas
 -  **Exportación a Excel/PDF** de reportes personalizados
 -  **Autenticación segura** con roles de usuario
 -  **Interfaz moderna** con Tailwind CSS
+-  **Protección contra sincronizaciones simultáneas** mediante sistema de locks
 
 ---
 
@@ -108,10 +110,12 @@ DB_PASSWORD=tu_contraseña
 
 ###  Configuración de Grandstream UCM
 
-Estas variables son **obligatorias** para conectar con tu central telefónica:
+> **Nota:** A partir de la versión con soporte Multi-Central, las credenciales de las centrales se configuran **directamente desde la interfaz web**, no en el archivo `.env`.
+
+Las siguientes variables en `.env` son opcionales y solo se usan como valores por defecto:
 
 ```env
-# IP o dominio de la central Grandstream
+# IP o dominio de la central Grandstream (opcional)
 GRANDSTREAM_IP=192.168.1.100
 
 # Puerto de la API (por defecto 7110)
@@ -167,38 +171,77 @@ Este comando creará los usuarios configurados en las variables de entorno (`ADM
 
 ##  Comandos Personalizados
 
-El panel incluye comandos Artisan para sincronización con la central Grandstream:
+El panel incluye comandos Artisan para sincronización con la central Grandstream.
+
+> **Importante:** Todos los comandos requieren especificar la central PBX con `--pbx=ID`
+
+### Ver centrales disponibles
+
+Si ejecutas un comando sin especificar `--pbx`, verás la lista de centrales configuradas:
+
+```bash
+php artisan calls:sync
+# Salida:
+# No se especificó central. Centrales disponibles:
+# +----+-------------------+-------------+
+# | ID | Nombre            | IP          |
+# +----+-------------------+-------------+
+# | 1  | Central Principal | 10.36.1.10  |
+# | 5  | Central Prueba    | 12.34.56.78 |
+# +----+-------------------+-------------+
+# Uso: php artisan calls:sync --pbx=1 --year=2024
+```
 
 ### Sincronizar CDRs (Registros de Llamadas)
 
 ```bash
-php artisan calls:sync #<--- Este trae solo las llamadas del 2026 (en caso de que sean muchas llamadas lo mejor es ir año por año)
+# Sincronizar llamadas del año actual
+php artisan calls:sync --pbx=1
+
+# Sincronizar desde un año específico
+php artisan calls:sync --pbx=1 --year=2023
 ```
 
 Opciones disponibles:
-```bash
-# Sincronizar un año específico
-php artisan calls:sync --year=2023 #<--- con 2023 se traen todas las llamadas desde el 2023 hasta la fecha actual
-```
-- RECOMENDADO LA PRIMERA VEZ
+| Opción | Descripción |
+|--------|-------------|
+| `--pbx=ID` | **Obligatorio.** ID de la central PBX |
+| `--year=YYYY` | Año desde el cual sincronizar (default: año actual) |
 
 Este comando:
 - Conecta con la API de la central Grandstream
 - Descarga los registros de llamadas (CDR)
 - Almacena los datos en la base de datos local
 - Evita duplicados automáticamente
+- Asocia las llamadas a la central especificada
 
 ### Sincronizar Extensiones
 
 ```bash
-php artisan extensions:sync
-php artisan extensions:import
+# Sincronizar todas las extensiones
+php artisan extensions:import --pbx=1
+
+# Sincronizar una extensión específica
+php artisan extensions:import 1001 --pbx=1
 ```
 
 Este comando:
 - Obtiene la lista de extensiones configuradas en la central
 - Sincroniza nombres, estados y configuraciones
-- Actualiza la información en tiempo real
+- Actualiza la información de forma inteligente (solo si hay cambios)
+- Asocia las extensiones a la central especificada
+
+### Sincronización desde la Web
+
+También puedes sincronizar directamente desde la interfaz web:
+
+1. Ir a **Gestión de Centrales PBX**
+2. Seleccionar una central sin datos
+3. Se mostrará la página de **Configuración Inicial**
+4. Marcar qué sincronizar (extensiones, llamadas, año)
+5. Click en **Iniciar Sincronización**
+
+> El sistema incluye protección contra sincronizaciones simultáneas. Si otro usuario ya está sincronizando, verás un mensaje de espera.
 
 
 ##  Ejecutar con XAMPP
@@ -253,23 +296,64 @@ npm run dev
 
 ```
 ├── app/
-│   ├── Console/Commands/     # Comandos Artisan personalizados
-│   │   ├── SyncCalls.php     # Sincronización de CDRs
-│   │   └── SyncExtensions.php # Sincronización de extensiones
-│   ├── Exports/              # Exportaciones Excel
-│   ├── Http/Controllers/     # Controladores
-│   ├── Models/               # Modelos Eloquent
-│   └── Traits/               # Traits reutilizables (GrandstreamTrait)
+│   ├── Console/Commands/       # Comandos Artisan personalizados
+│   │   ├── SyncCalls.php       # Sincronización de CDRs
+│   │   └── ImportarExtensiones.php # Sincronización de extensiones
+│   ├── Exports/                # Exportaciones Excel
+│   ├── Http/Controllers/       # Controladores
+│   │   ├── CdrController.php   # Dashboard y llamadas
+│   │   ├── ExtensionController.php # Gestión de extensiones
+│   │   └── PbxConnectionController.php # Gestión multi-central
+│   ├── Models/                 # Modelos Eloquent
+│   │   ├── Call.php            # Modelo de llamadas (con Global Scope)
+│   │   ├── Extension.php       # Modelo de extensiones (con Global Scope)
+│   │   └── PbxConnection.php   # Modelo de centrales PBX
+│   ├── Services/               # Servicios
+│   │   └── GrandstreamService.php # Conexión con API Grandstream
+│   └── Traits/                 # Traits reutilizables
+│       └── GrandstreamTrait.php # Wrapper del servicio Grandstream
 ├── config/
-│   └── services.php          # Configuración de servicios externos
+│   └── services.php            # Configuración de servicios externos
 ├── database/
-│   ├── migrations/           # Migraciones de BD
-│   └── seeders/              # Seeders de datos iniciales
+│   ├── migrations/             # Migraciones de BD
+│   └── seeders/                # Seeders de datos iniciales
 ├── resources/
-│   └── views/                # Vistas Blade
+│   └── views/                  # Vistas Blade
+│       ├── pbx/                # Vistas de gestión de centrales
+│       │   ├── index.blade.php # Lista de centrales
+│       │   └── setup.blade.php # Configuración inicial
+│       └── configuracion.blade.php # Gestión de extensiones
 └── routes/
-    └── web.php               # Rutas de la aplicación
+    └── web.php                 # Rutas de la aplicación
 ```
+
+---
+
+##  Sistema Multi-Central
+
+El panel soporta la gestión de **múltiples centrales PBX** desde una sola instalación:
+
+### Flujo de Uso
+
+1. **Login** → Se muestra la lista de centrales disponibles
+2. **Seleccionar Central** → Si tiene datos, va al Dashboard
+3. **Central sin datos** → Se muestra página de Configuración Inicial
+4. **Sincronizar** → Importa extensiones y/o llamadas
+5. **Dashboard** → Trabaja con los datos de esa central
+
+### Características
+
+- Cada central tiene sus propios datos de llamadas y extensiones
+- Los datos se filtran automáticamente por la central activa (Global Scopes)
+- Puedes cambiar de central en cualquier momento
+- Las credenciales de cada central se almacenan de forma segura
+
+### Agregar Nueva Central
+
+1. Ir a **Gestión de Centrales PBX** (`/pbx`)
+2. Click en **Agregar Central**
+3. Completar: Nombre, IP, Puerto, Usuario, Contraseña
+4. Guardar y Seleccionar
 
 ---
 
@@ -278,7 +362,9 @@ npm run dev
 - Las credenciales sensibles se manejan exclusivamente mediante variables de entorno
 - El archivo `.env` está excluido del repositorio (`.gitignore`)
 - Las contraseñas se almacenan con hash Bcrypt
+- Las contraseñas de las centrales PBX se encriptan en la base de datos
 - Protección CSRF en todos los formularios
+- Sistema de locks para prevenir sincronizaciones simultáneas
 
 ---
 

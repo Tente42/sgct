@@ -151,76 +151,41 @@ class ExtensionController extends Controller
     }
 
     /**
-     * Crear una nueva extension en la Central Grandstream UCM6300 y en la BD local
-     * Usa la API addSIPAccountAndUser
+     * Actualizar las IPs de todas las extensiones desde la Central
      */
-    public function store(Request $request)
+    public function updateIps()
     {
-        // 1. Validacion de datos
-        $request->validate([
-            'extension' => 'required|string|regex:/^[0-9]+$/|unique:extensions,extension',
-            'password' => 'required|string',
-            'password_confirmation' => 'required|string|same:password',
-        ], [
-            'extension.required' => 'El número de anexo es obligatorio.',
-            'extension.regex' => 'El número de anexo solo puede contener dígitos.',
-            'extension.unique' => 'Este número de anexo ya existe en la base de datos local.',
-            'password.required' => 'La contraseña es obligatoria.',
-            'password_confirmation.required' => 'Debe confirmar la contraseña.',
-            'password_confirmation.same' => 'Las contraseñas no coinciden.',
-        ]);
-
-        // 2. FASE DE CONEXION A GRANDSTREAM (usando el trait)
         if (!$this->testConnection()) {
             return back()->with('error', 'Error: No se pudo conectar con la Central Telefónica. Verifique la red.');
         }
 
-        // 3. CREAR EXTENSION EN LA CENTRAL (addSIPAccountAndUser)
-        // Basado en la documentación oficial del UCM6300
-        $createParams = [
-            'extension' => $request->extension,
-            'secret' => $request->password,               // Contraseña SIP
-            'vmsecret' => $request->password,             // Contraseña Voicemail
-            'user_password' => $request->password,        // Contraseña de usuario
-            'max_contacts' => '1',                        // Concurrent Registration
-            'permission' => 'internal',                   // Permisos de llamada
-            'language' => 'es',                           // Idioma
-            'wave_privilege_id' => '0',                   // Privilegio Wave (0 = ninguno)
-            'dtmf_mode' => 'rfc4733',                     // DTMF Mode
-            'tel_uri' => 'disabled',                      // TEL URI
-            'direct_media' => 'no',                       // Enable Direct Media
-            'fax_mode' => 'none',                         // Fax Mode
-            'skip_trunk_auth' => 'no',                    // Skip Trunk Auth
-            'moh' => 'default',                           // Music on Hold
-        ];
+        $liveData = $this->connectApi('listAccount', [
+            'options'  => 'extension,addr',
+            'item_num' => 1000,
+            'sidx'     => 'extension',
+            'sord'     => 'asc'
+        ]);
 
-        $respCreate = $this->connectApi('addSIPAccountAndUser', $createParams);
+        $rawAccounts = $liveData['response']['account'] ?? 
+                       $liveData['response']['body']['account'] ?? [];
 
-        // 4. VERIFICAR RESULTADO DE LA CREACION
-        $statusCode = $respCreate['status'] ?? -999;
-        if ($statusCode != 0) {
-            $msgError = $respCreate['response']['body'] ?? $respCreate['response']['message'] ?? json_encode($respCreate);
-            return back()->with('error', "Fallo la creacion en la Central (codigo: {$statusCode}): {$msgError}");
+        $updated = 0;
+        foreach ($rawAccounts as $account) {
+            $ext = $account['extension'] ?? null;
+            $addr = $account['addr'] ?? null;
+            
+            if ($ext) {
+                $ip = ($addr && $addr !== '-') ? $addr : null;
+                
+                $extension = Extension::where('extension', $ext)->first();
+                if ($extension) {
+                    $extension->update(['ip' => $ip]);
+                    $updated++;
+                }
+            }
         }
 
-        // 5. APLICAR CAMBIOS EN LA CENTRAL (Commit)
-        $this->connectApi('applyChanges');
-
-        // 6. GUARDAR EN BASE DE DATOS LOCAL (solo si la central lo creo exitosamente)
-        try {
-            Extension::create([
-                'pbx_connection_id' => session('active_pbx_id'),
-                'extension' => $request->extension,
-                'permission' => 'Internal',
-                'do_not_disturb' => false,
-                'max_contacts' => 1,
-            ]);
-        } catch (\Exception $e) {
-            return back()->with('error', "El anexo se creo en la Central, pero fallo el guardado local: {$e->getMessage()}");
-        }
-
-        return redirect()->route('extension.index', ['anexo' => $request->extension])
-                         ->with('success', "Anexo {$request->extension} creado exitosamente. Puede editarlo para agregar mas detalles.");
+        return back()->with('success', "Se actualizaron las IPs de {$updated} extensiones.");
     }
 
     public function index(Request $request)
@@ -232,10 +197,6 @@ class ExtensionController extends Controller
             ->paginate(50)
             ->appends($request->only('anexo'));
 
-        // Obtener las IPs de las extensiones en tiempo real
-        $ipController = new IPController();
-        $ips = $ipController->getExtensionIps();
-
-        return view('configuracion', compact('extensions', 'anexo', 'ips'));
+        return view('configuracion', compact('extensions', 'anexo'));
     }
 }

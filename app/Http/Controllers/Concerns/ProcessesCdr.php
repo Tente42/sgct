@@ -1,0 +1,116 @@
+<?php
+
+namespace App\Http\Controllers\Concerns;
+
+/**
+ * Trait para procesar registros CDR de Grandstream
+ */
+trait ProcessesCdr
+{
+    /**
+     * Recolectar todos los segmentos de un paquete CDR recursivamente
+     */
+    protected function collectCdrSegments(array $node): array
+    {
+        $collected = [];
+
+        if (isset($node['start']) && !empty($node['start'])) {
+            $collected[] = $node;
+        }
+
+        foreach ($node as $key => $value) {
+            if (is_array($value) && (str_starts_with($key, 'sub_cdr') || $key === 'main_cdr')) {
+                $collected = array_merge($collected, $this->collectCdrSegments($value));
+            }
+        }
+
+        return $collected;
+    }
+
+    /**
+     * Consolidar segmentos en un solo registro de llamada
+     */
+    protected function consolidateCdrSegments(array $segments): array
+    {
+        if (empty($segments)) return [];
+
+        $segments = array_values($segments);
+        $first = $segments[0];
+        $firstSrc = $first['src'] ?? '';
+        $firstDst = $first['dst'] ?? '';
+
+        $esEntrante = $this->isExternalNumber($firstSrc) && $this->isExtension($firstDst);
+
+        $data = [
+            'unique_id' => null,
+            'start_time' => null,
+            'source' => null,
+            'destination' => null,
+            'duration' => 0,
+            'billsec' => 0,
+            'disposition' => 'NO ANSWER',
+            'caller_name' => null,
+            'recording_file' => null,
+        ];
+
+        foreach ($segments as $seg) {
+            $src = $seg['src'] ?? '';
+            $dst = $seg['dst'] ?? '';
+
+            // Capturar datos más tempranos
+            if (!$data['start_time'] || ($seg['start'] ?? '') < $data['start_time']) {
+                $data['start_time'] = $seg['start'] ?? null;
+            }
+            $data['unique_id'] ??= $seg['acctid'] ?? $seg['uniqueid'] ?? null;
+            $data['caller_name'] ??= $seg['caller_name'] ?? null;
+            $data['recording_file'] ??= $seg['recordfiles'] ?? null;
+
+            // Sumar tiempos
+            $data['duration'] += (int)($seg['duration'] ?? 0);
+            $data['billsec'] += (int)($seg['billsec'] ?? 0);
+
+            // Determinar origen/destino
+            if ($esEntrante) {
+                $data['source'] ??= $this->isExtension($dst) ? $dst : null;
+                $data['destination'] ??= $this->isExternalNumber($src) ? $src : null;
+            } else {
+                $data['source'] ??= $this->isExtension($src) ? $src : null;
+                $data['destination'] ??= $dst ?: null;
+            }
+
+            if ((int)($seg['billsec'] ?? 0) > 0) {
+                $data['disposition'] = 'ANSWERED';
+            }
+        }
+
+        // Valores por defecto
+        $data['source'] ??= $firstSrc ?: 'Desconocido';
+        $data['destination'] ??= $firstDst ?: 'Desconocido';
+        $data['unique_id'] ??= md5($data['start_time'] . $data['source'] . $data['destination']);
+
+        // Determinar disposition final
+        if ($data['disposition'] !== 'ANSWERED') {
+            foreach ($segments as $seg) {
+                $disp = strtoupper($seg['disposition'] ?? '');
+                if (str_contains($disp, 'BUSY')) {
+                    $data['disposition'] = 'BUSY';
+                    break;
+                } elseif (str_contains($disp, 'FAILED')) {
+                    $data['disposition'] = 'FAILED';
+                }
+            }
+        }
+
+        return $data;
+    }
+
+    protected function isExtension(string $num): bool
+    {
+        return preg_match('/^\d{3,4}$/', $num) === 1;
+    }
+
+    protected function isExternalNumber(string $num): bool
+    {
+        return preg_match('/^(\+|\d{5,})/', $num) === 1;
+    }
+}
