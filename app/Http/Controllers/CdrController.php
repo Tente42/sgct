@@ -68,6 +68,11 @@ class CdrController extends Controller
      */
     public function syncCDRs()
     {
+        // Verificar permiso
+        if (!auth()->user()->canSyncCalls()) {
+            abort(403, 'No tienes permiso para sincronizar llamadas.');
+        }
+
         $ultimaLlamada = Call::orderBy('start_time', 'desc')->first();
         $start = $ultimaLlamada 
             ? Carbon::parse($ultimaLlamada->start_time)->subHour() 
@@ -98,6 +103,11 @@ class CdrController extends Controller
      */
     public function descargarPDF(Request $request)
     {
+        // Verificar permiso
+        if (!auth()->user()->canExportPdf()) {
+            abort(403, 'No tienes permiso para exportar a PDF.');
+        }
+
         ini_set('memory_limit', '1024M');
         ini_set('max_execution_time', 300);
 
@@ -143,6 +153,11 @@ class CdrController extends Controller
      */
     public function exportarExcel(Request $request)
     {
+        // Verificar permiso
+        if (!auth()->user()->canExportExcel()) {
+            abort(403, 'No tienes permiso para exportar a Excel.');
+        }
+
         return Excel::download(
             new CallsExport($request->only(['fecha_inicio', 'fecha_fin', 'anexo'])),
             'reporte_' . date('Y-m-d') . '.xlsx'
@@ -154,6 +169,11 @@ class CdrController extends Controller
      */
     public function showCharts(Request $request)
     {
+        // Verificar permiso
+        if (!auth()->user()->canViewCharts()) {
+            abort(403, 'No tienes permiso para ver los gráficos.');
+        }
+
         $fechaInicio = $request->input('fecha_inicio', Carbon::now()->subDays(30)->format('Y-m-d'));
         $fechaFin = $request->input('fecha_fin', Carbon::now()->format('Y-m-d'));
         $anexo = $request->input('anexo');

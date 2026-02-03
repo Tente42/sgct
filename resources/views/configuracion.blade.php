@@ -13,7 +13,7 @@
                     <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-cog me-2"></i>Gestión de Anexos</h3>
                     <span class="text-gray-500 text-sm">Total de anexos: {{ $extensions->total() }}</span>
                 </div>
-                @if(Auth::user()->isAdmin())
+                @if(Auth::user()->canUpdateIps())
                 <form method="POST" action="{{ route('extension.updateIps') }}" class="inline">
                     @csrf
                     <button type="submit" 
@@ -115,7 +115,7 @@
                                 {{ $extension->max_contacts ?? 1 }}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                                @if(Auth::user()->isAdmin())
+                                @if(Auth::user()->canEditExtensions())
                                 <button type="button" 
                                         class="inline-flex items-center gap-1 px-3 py-2 rounded border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:border-blue-300"
                                         title="Editar"

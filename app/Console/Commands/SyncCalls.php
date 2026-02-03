@@ -169,11 +169,18 @@ class SyncCalls extends Command
         $data = [
             'unique_id' => null,
             'start_time' => null,
+            'answer_time' => null,
             'source' => null,
             'destination' => null,
+            'dstanswer' => null,
             'duration' => 0,
             'billsec' => 0,
             'disposition' => 'NO ANSWER',
+            'action_type' => null,
+            'lastapp' => null,
+            'channel' => null,
+            'dst_channel' => null,
+            'src_trunk_name' => null,
             'caller_name' => null,
             'recording_file' => null,
         ];
@@ -189,6 +196,23 @@ class SyncCalls extends Command
             $data['unique_id'] ??= $seg['acctid'] ?? $seg['uniqueid'] ?? null;
             $data['caller_name'] ??= $seg['caller_name'] ?? null;
             $data['recording_file'] ??= $seg['recordfiles'] ?? null;
+
+            // Nuevos campos detallados
+            $data['action_type'] ??= $seg['action_type'] ?? null;
+            $data['lastapp'] ??= $seg['lastapp'] ?? null;
+            $data['channel'] ??= $seg['channel'] ?? null;
+            $data['dst_channel'] ??= $seg['dstchannel'] ?? null;
+            $data['src_trunk_name'] ??= $seg['src_trunk_name'] ?? null;
+            
+            // Capturar answer_time si existe
+            if (!empty($seg['answer']) && $seg['answer'] !== '0000-00-00 00:00:00') {
+                $data['answer_time'] ??= $seg['answer'];
+            }
+            
+            // Capturar dstanswer (quien contestó)
+            if (!empty($seg['dstanswer'])) {
+                $data['dstanswer'] ??= $seg['dstanswer'];
+            }
 
             // Sumar tiempos
             $data['duration'] += (int)($seg['duration'] ?? 0);

@@ -18,8 +18,15 @@ class TestApiCommands extends Command
                             {--outbound-id= : ID de la ruta saliente para getOutboundRoute}
                             {--extension= : Número de extensión para getSIPAccount}
                             {--queue= : Número de cola para queueapi}
-                            {--start-time= : Fecha inicial para queueapi (YYYY-MM-DD)}
-                            {--end-time= : Fecha final para queueapi (YYYY-MM-DD)}';
+                            {--start-time= : Fecha inicial para queueapi (YYYY-MM-DD). Por defecto: hoy}
+                            {--end-time= : Fecha final para queueapi (YYYY-MM-DD). Por defecto: hoy}
+                            {--days=30 : Número de días hacia atrás para buscar llamadas (por defecto 30)}
+                            {--all-calls : Mostrar todas las llamadas (entrantes y salientes) del anexo}
+                            {--incoming : Solo mostrar llamadas entrantes}
+                            {--outgoing : Solo mostrar llamadas salientes}
+                            {--agent= : Número de agente para queueapi (usa * para todos)}
+                            {--stats-type=overview : Tipo de estadísticas: overview, calldetail, loginhistory, pausedhistory}
+                            {--today : Usar solo la fecha de hoy para queueapi}';
     
     protected $description = 'Comando para probar llamados a la API de Grandstream';
 
@@ -52,8 +59,17 @@ class TestApiCommands extends Command
             $this->info("  - getSIPAccount");
             $this->info("  - queueapi");
             $this->info("  - cdrapi");
+            $this->info("  - kpi-turnos");
+            $this->info("  - explore-action-types");
             $this->newLine();
-            $this->info("Uso: php artisan api:test --pbx=1 --action=listExtensionGroup");
+            $this->info("Ejemplos de uso:");
+            $this->info("  php artisan api:test --pbx=1 --action=listExtensionGroup");
+            $this->info("  php artisan api:test --pbx=1 --action=cdrapi --caller=4445 --days=30 --all-calls");
+            $this->info("  php artisan api:test --pbx=1 --action=cdrapi --caller=4445 --incoming --days=7");
+            $this->info("  php artisan api:test --pbx=1 --action=queueapi --today --queue=6500");
+            $this->info("  php artisan api:test --pbx=1 --action=queueapi --start-time=2026-02-01 --end-time=2026-02-02");
+            $this->info("  php artisan api:test --pbx=1 --action=kpi-turnos --today --queue=6500");
+            $this->info("  php artisan api:test --pbx=1 --action=explore-action-types");
             return 0;
         }
 
@@ -80,6 +96,10 @@ class TestApiCommands extends Command
                 return $this->testQueueApi();
             case 'cdrapi':
                 return $this->testCdrApi();
+            case 'kpi-turnos':
+                return $this->testKpiTurnos();
+            case 'explore-action-types':
+                return $this->exploreActionTypes();
             default:
                 $this->error("Acción '{$action}' no reconocida.");
                 return 1;
@@ -321,36 +341,54 @@ class TestApiCommands extends Command
     }
 
     /**
-     * Probar cdrapi - Obtener 1 llamada reciente
+     * Probar cdrapi - Obtener llamadas de un anexo en los últimos N días
      */
     private function testCdrApi(): int
     {
         $caller = $this->option('caller');
         $uniqueid = $this->option('uniqueid');
+        $days = (int) $this->option('days');
+        $allCalls = $this->option('all-calls');
+        $incoming = $this->option('incoming');
+        $outgoing = $this->option('outgoing');
         
+        // Validaciones
         if ($uniqueid) {
             $this->info("📞 Buscando llamada con Unique ID: {$uniqueid}...");
         } elseif ($caller) {
-            $this->info("📞 Buscando última llamada contestada del origen: {$caller}...");
+            $typeText = $allCalls ? 'todas las llamadas' : ($incoming ? 'llamadas entrantes' : ($outgoing ? 'llamadas salientes' : 'llamadas contestadas'));
+            $this->info("📞 Buscando {$typeText} del anexo {$caller} en los últimos {$days} días...");
         } else {
             $this->info("📞 Obteniendo CDR (1 registro reciente)...");
         }
         $this->newLine();
 
+        // Calcular fechas si se especifica un anexo
         $params = [
             'format' => 'json',
-            'numRecords' => $uniqueid ? 1000 : ($caller ? 100 : 1), // Buscar en más registros para uniqueid
+            'numRecords' => $uniqueid ? 1000 : ($caller && ($allCalls || $incoming || $outgoing) ? 5000 : ($caller ? 100 : 1)), // Más registros para búsqueda completa
             'minDur' => 0
         ];
         
-        if ($caller) {
+        // Solo usar el parámetro caller de la API si NO estamos buscando todas las llamadas
+        if ($caller && !$allCalls && !$incoming && !$outgoing) {
             $params['caller'] = $caller;
         }
+        
+        if ($caller) {
+            // Agregar fechas para limitar búsqueda
+            if ($days > 0) {
+                $endDate = now();
+                $startDate = now()->subDays($days);
+                $params['start_time'] = $startDate->format('Y-m-d H:i:s');
+                $params['end_time'] = $endDate->format('Y-m-d H:i:s');
+            }
+        }
 
-        $response = $this->connectApi('cdrapi', $params, 60);
+        $response = $this->connectApi('cdrapi', $params, 120);
 
         if (!isset($response['cdr_root']) || empty($response['cdr_root'])) {
-            $this->warn("⚠️ No se encontraron registros CDR" . ($caller ? " para el origen {$caller}" : "") . ".");
+            $this->warn("⚠️ No se encontraron registros CDR" . ($caller ? " para el anexo {$caller}" : "") . ".");
             return 0;
         }
 
@@ -363,11 +401,6 @@ class TestApiCommands extends Command
         if ($uniqueid) {
             $found = null;
             foreach ($response['cdr_root'] as $record) {
-                // Mostrar el uniqueid de los primeros 3 registros para debug
-                if ($totalRecords <= 5) {
-                    $this->line("  🔍 Registro uniqueid: " . ($record['uniqueid'] ?? 'N/A'));
-                }
-                
                 if (isset($record['uniqueid']) && $record['uniqueid'] === $uniqueid) {
                     $found = $record;
                     break;
@@ -376,35 +409,203 @@ class TestApiCommands extends Command
             
             if (!$found) {
                 $this->warn("⚠️ No se encontró llamada con Unique ID: {$uniqueid} en los últimos {$totalRecords} registros.");
-                $this->info("💡 Intenta buscar por --caller si conoces el número de origen.");
                 return 0;
             }
             
-            $cdr = $found;
+            $this->displaySingleCall($found);
+            return 0;
         }
-        // Si se especificó caller, filtrar por ANSWERED y tomar la primera
+        // Si se especificó caller con opciones de filtro
+        elseif ($caller && ($allCalls || $incoming || $outgoing)) {
+            $filteredCalls = $this->filterCallsByType($response['cdr_root'], $caller, $allCalls, $incoming, $outgoing);
+            
+            if (empty($filteredCalls)) {
+                $typeText = $allCalls ? 'llamadas' : ($incoming ? 'llamadas entrantes' : ($outgoing ? 'llamadas salientes' : 'llamadas'));
+                $this->warn("⚠️ No se encontraron {$typeText} para el anexo {$caller} en los últimos {$days} días.");
+                return 0;
+            }
+            
+            $this->displayMultipleCalls($filteredCalls, $caller, $days);
+            return 0;
+        }
+        // Si se especificó caller sin filtros, mostrar solo la última contestada
         elseif ($caller) {
             $answered = array_filter($response['cdr_root'], function($record) {
                 return $record['disposition'] === 'ANSWERED';
             });
             
             if (empty($answered)) {
-                $this->warn("⚠️ No se encontraron llamadas contestadas para el origen {$caller}.");
+                $this->warn("⚠️ No se encontraron llamadas contestadas para el anexo {$caller}.");
                 return 0;
             }
             
             $cdr = reset($answered);
+            $this->displaySingleCall($cdr);
+            return 0;
         } else {
             $cdr = $response['cdr_root'][0];
+            $this->displaySingleCall($cdr);
+            return 0;
         }
 
-        $this->info("✅ Registro CDR encontrado:");
+    }
+
+    /**
+     * Filtrar llamadas por tipo (entrantes, salientes, todas)
+     */
+    private function filterCallsByType(array $calls, string $extension, bool $allCalls, bool $incoming, bool $outgoing): array
+    {
+        if ($allCalls) {
+            // Todas las llamadas donde el anexo está involucrado como origen o destino
+            return array_filter($calls, function($call) use ($extension) {
+                $src = $call['src'] ?? '';
+                $dst = $call['dst'] ?? '';
+                $dstanswer = $call['dstanswer'] ?? '';
+                $channelExt = $call['channel_ext'] ?? '';
+                $dstChannelExt = $call['dstchannel_ext'] ?? '';
+                
+                return ($src === $extension || $dst === $extension || $dstanswer === $extension || 
+                        $channelExt === $extension || $dstChannelExt === $extension);
+            });
+        }
+        
+        if ($incoming) {
+            // Llamadas entrantes: el anexo es el destino o quien responde
+            return array_filter($calls, function($call) use ($extension) {
+                $src = $call['src'] ?? '';
+                $dst = $call['dst'] ?? '';
+                $dstanswer = $call['dstanswer'] ?? '';
+                $dstChannelExt = $call['dstchannel_ext'] ?? '';
+                
+                return (($dst === $extension || $dstanswer === $extension || $dstChannelExt === $extension) && $src !== $extension);
+            });
+        }
+        
+        if ($outgoing) {
+            // Llamadas salientes: el anexo es el origen
+            return array_filter($calls, function($call) use ($extension) {
+                $src = $call['src'] ?? '';
+                $channelExt = $call['channel_ext'] ?? '';
+                
+                return ($src === $extension || $channelExt === $extension);
+            });
+        }
+        
+        // Por defecto, todas las llamadas
+        return array_filter($calls, function($call) use ($extension) {
+            $src = $call['src'] ?? '';
+            $dst = $call['dst'] ?? '';
+            $dstanswer = $call['dstanswer'] ?? '';
+            $channelExt = $call['channel_ext'] ?? '';
+            $dstChannelExt = $call['dstchannel_ext'] ?? '';
+            
+            return ($src === $extension || $dst === $extension || $dstanswer === $extension || 
+                    $channelExt === $extension || $dstChannelExt === $extension);
+        });
+    }
+
+    /**
+     * Mostrar múltiples llamadas en formato tabla resumida
+     */
+    private function displayMultipleCalls(array $calls, string $extension, int $days): void
+    {
+        $totalCalls = count($calls);
+        $answered = array_filter($calls, fn($call) => ($call['disposition'] ?? '') === 'ANSWERED');
+        $totalAnswered = count($answered);
+        $totalDuration = array_sum(array_column($calls, 'duration'));
+        $totalBillable = array_sum(array_map(fn($call) => $call['billsec'] ?? 0, $answered));
+        
+        $this->info("✅ Se encontraron {$totalCalls} llamadas para el anexo {$extension} en los últimos {$days} días:");
+        $this->info("📞 Llamadas contestadas: {$totalAnswered}");
+        $this->info("⏱️ Duración total: " . gmdate('H:i:s', $totalDuration));
+        $this->info("💰 Tiempo facturable: " . gmdate('H:i:s', $totalBillable));
         $this->newLine();
 
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📋 RESUMEN DE LLAMADAS</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        
+        // Ordenar llamadas por fecha (más recientes primero)
+        usort($calls, function($a, $b) {
+            $timeA = isset($a['start']) ? strtotime($a['start']) : 0;
+            $timeB = isset($b['start']) ? strtotime($b['start']) : 0;
+            return $timeB - $timeA;
+        });
+        
+        // Encabezados de tabla
+        $this->line(sprintf(
+            "  <fg=white;options=bold>%-20s %-12s %-12s %-12s %-10s %-8s</>",
+            'FECHA/HORA', 'ORIGEN', 'DESTINO', 'QUIEN RESP.', 'ESTADO', 'DURACIÓN'
+        ));
+        $this->line("<fg=cyan>──────────────────────────────────────────────────────────────────────────────────────────</>");
+        
+        foreach ($calls as $index => $call) {
+            $date = isset($call['start']) ? date('d/m/Y H:i:s', strtotime($call['start'])) : 'N/A';
+            $src = substr($call['src'] ?? 'N/A', 0, 11);
+            $dst = substr($call['dst'] ?? 'N/A', 0, 11);
+            $answered = substr($call['dstanswer'] ?? 'N/A', 0, 11);
+            $disposition = $call['disposition'] ?? 'N/A';
+            $duration = gmdate('i:s', $call['duration'] ?? 0);
+            
+            $dispositionColor = match($disposition) {
+                'ANSWERED' => 'green',
+                'NO ANSWER' => 'yellow',
+                'BUSY' => 'red',
+                'FAILED' => 'red',
+                default => 'white'
+            };
+            
+            // Resaltar en qué posición está nuestro anexo
+            $srcDisplay = $src === $extension ? "<fg=yellow;options=bold>{$src}</>" : $src;
+            $dstDisplay = $dst === $extension ? "<fg=yellow;options=bold>{$dst}</>" : $dst;
+            $ansDisplay = $answered === $extension ? "<fg=yellow;options=bold>{$answered}</>" : $answered;
+            
+            $this->line(sprintf(
+                "  %-20s %-12s %-12s %-12s <fg={$dispositionColor}>%-10s</> %-8s",
+                substr($date, 0, 19),
+                $srcDisplay,
+                $dstDisplay, 
+                $ansDisplay,
+                substr($disposition, 0, 9),
+                $duration
+            ));
+            
+            // Mostrar detalles completos solo si hay pocas llamadas
+            if ($totalCalls <= 5 && $index === 0) {
+                $this->newLine();
+                $this->line("<fg=cyan>── DETALLE DE LA LLAMADA MÁS RECIENTE ──</>");
+                $this->displaySingleCall($call, false);
+                $this->line("<fg=cyan>────────────────────────────────────────</>");
+            }
+        }
+        
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        
+        if ($totalCalls > 5) {
+            $this->newLine();
+            $this->info("💡 Mostrando resumen. Para ver detalles completos de una llamada específica, usa:");
+            $this->info("   php artisan api:test --pbx={$this->activePbx->id} --action=cdrapi --uniqueid=<UNIQUE_ID>");
+        }
+    }
+
+    /**
+     * Mostrar una sola llamada con todos los detalles
+     */
+    private function displaySingleCall(array $cdr, bool $showHeaders = true): void
+    {
+        if ($showHeaders) {
+            $this->info("✅ Registro CDR encontrado:");
+            $this->newLine();
+        }
+
         // Mostrar de manera ordenada y completa
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        }
         $this->line("<fg=yellow;options=bold>📋 IDENTIFICACIÓN DEL REGISTRO</>");
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        }
         $this->line("  <fg=white>Account ID:</>           " . ($cdr['AcctId'] ?? 'N/A'));
         $this->line("  <fg=white>Account Code:</>         " . ($cdr['accountcode'] ?? 'N/A'));
         $this->line("  <fg=white>Session ID:</>           " . ($cdr['session'] ?? 'N/A'));
@@ -412,9 +613,13 @@ class TestApiCommands extends Command
         $this->line("  <fg=white>CDR:</>                  " . ($cdr['cdr'] ?? 'N/A'));
         
         $this->newLine();
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        }
         $this->line("<fg=yellow;options=bold>📞 INFORMACIÓN DEL ORIGEN (CALLER)</>");
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        }
         $this->line("  <fg=white>Número Origen (src):</>        " . ($cdr['src'] ?? 'N/A'));
         $this->line("  <fg=white>Nombre Caller:</>              " . ($cdr['caller_name'] ?? 'N/A'));
         $this->line("  <fg=white>Caller ID (clid):</>           " . ($cdr['clid'] ?? 'N/A'));
@@ -426,9 +631,13 @@ class TestApiCommands extends Command
         $this->line("  <fg=white>Action Type:</>                " . ($cdr['action_type'] ?? 'N/A'));
         
         $this->newLine();
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        }
         $this->line("<fg=yellow;options=bold>📱 INFORMACIÓN DEL DESTINO (CALLEE)</>");
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        }
         $this->line("  <fg=white>Número Destino (dst):</>       " . ($cdr['dst'] ?? 'N/A'));
         $this->line("  <fg=white>Quien Respondió:</>            " . ($cdr['dstanswer'] ?? 'N/A'));
         $this->line("  <fg=white>Canal Destino:</>              " . ($cdr['dstchannel'] ?? 'N/A'));
@@ -438,9 +647,13 @@ class TestApiCommands extends Command
         $this->line("  <fg=white>Contexto Destino:</>           " . ($cdr['dcontext'] ?? 'N/A'));
         
         $this->newLine();
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        }
         $this->line("<fg=yellow;options=bold>⏱️  INFORMACIÓN DE TIEMPOS</>");
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        }
         $this->line("  <fg=white>Inicio (start):</>             " . ($cdr['start'] ?? 'N/A'));
         $this->line("  <fg=white>Respuesta (answer):</>         " . ($cdr['answer'] ?? 'N/A'));
         $this->line("  <fg=white>Fin (end):</>                  " . ($cdr['end'] ?? 'N/A'));
@@ -448,9 +661,13 @@ class TestApiCommands extends Command
         $this->line("  <fg=white>Tiempo Facturable:</>          <fg=cyan>" . ($cdr['billsec'] ?? '0') . "</> segundos");
         
         $this->newLine();
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        }
         $this->line("<fg=yellow;options=bold>📊 ESTADO Y DISPOSICIÓN</>");
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        }
         
         $disposition = $cdr['disposition'] ?? 'N/A';
         $dispositionColor = match($disposition) {
@@ -467,17 +684,25 @@ class TestApiCommands extends Command
         $this->line("  <fg=white>AMA Flags:</>                  " . ($cdr['amaflags'] ?? 'N/A'));
         
         $this->newLine();
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        }
         $this->line("<fg=yellow;options=bold>🔧 APLICACIÓN Y DATOS TÉCNICOS</>");
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        }
         $this->line("  <fg=white>Última Aplicación:</>          " . ($cdr['lastapp'] ?? 'N/A'));
         $this->line("  <fg=white>Datos de la App:</>            " . ($cdr['lastdata'] ?? 'N/A'));
         
         if (!empty($cdr['recordfiles'])) {
             $this->newLine();
-            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            if ($showHeaders) {
+                $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            }
             $this->line("<fg=yellow;options=bold>🎙️  GRABACIÓN</>");
-            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            if ($showHeaders) {
+                $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            }
             $this->line("  <fg=white>Archivo(s):</>                 <fg=green>" . $cdr['recordfiles'] . "</>");
         }
         
@@ -494,20 +719,23 @@ class TestApiCommands extends Command
         $extraFields = array_diff_key($cdr, array_flip($knownFields));
         if (!empty($extraFields)) {
             $this->newLine();
-            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            if ($showHeaders) {
+                $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            }
             $this->line("<fg=yellow;options=bold>➕ CAMPOS ADICIONALES</>");
-            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            if ($showHeaders) {
+                $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            }
             foreach ($extraFields as $key => $value) {
                 $this->line("  <fg=white>{$key}:</>  " . (is_array($value) ? json_encode($value) : $value));
             }
         }
         
-        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
-        
-        $this->newLine();
-        $this->info("✅ Comando ejecutado exitosamente.");
-
-        return 0;
+        if ($showHeaders) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            $this->newLine();
+            $this->info("✅ Comando ejecutado exitosamente.");
+        }
     }
 
     /**
@@ -1684,18 +1912,33 @@ class TestApiCommands extends Command
     private function testQueueApi(): int
     {
         $queue = $this->option('queue');
+        $agent = $this->option('agent');
+        $statsType = $this->option('stats-type');
+        $today = $this->option('today');
         $startTime = $this->option('start-time');
         $endTime = $this->option('end-time');
         
-        // Validar fechas requeridas
-        if (!$startTime || !$endTime) {
-            $this->warn("⚠️ Debes especificar las fechas de inicio y fin.");
-            $this->info("Uso: php artisan api:test --pbx=1 --action=queueapi --start-time=2026-02-01 --end-time=2026-02-02 [--queue=6500]");
-            return 1;
+        // Manejar fechas por defecto
+        if ($today) {
+            $startTime = now()->format('Y-m-d');
+            $endTime = now()->format('Y-m-d');
+        } elseif (!$startTime || !$endTime) {
+            // Si no se especifican fechas, usar hoy por defecto
+            $startTime = now()->format('Y-m-d');
+            $endTime = now()->format('Y-m-d');
+            $this->info("📅 No se especificaron fechas, usando hoy: {$startTime}");
         }
 
         $queueLabel = $queue ? "cola {$queue}" : "todas las colas";
-        $this->info("📊 Obteniendo estadísticas de {$queueLabel}...");
+        $agentLabel = $agent ? "agente {$agent}" : "todos los agentes";
+        $statsLabel = match($statsType) {
+            'calldetail' => 'detalles de llamadas',
+            'loginhistory' => 'historial de login',
+            'pausedhistory' => 'historial de pausas',
+            default => 'resumen general'
+        };
+        
+        $this->info("📊 Obteniendo {$statsLabel} de {$queueLabel} para {$agentLabel}...");
         $this->info("📅 Período: {$startTime} al {$endTime}");
         $this->newLine();
 
@@ -1703,11 +1946,15 @@ class TestApiCommands extends Command
             'format' => 'json',
             'startTime' => $startTime,
             'endTime' => $endTime,
-            'statisticsType' => 'overview'
+            'statisticsType' => $statsType
         ];
         
         if ($queue) {
             $params['queue'] = $queue;
+        }
+        
+        if ($agent) {
+            $params['agent'] = $agent;
         }
 
         $response = $this->connectApi('queueapi', $params, 60);
@@ -1719,13 +1966,48 @@ class TestApiCommands extends Command
         }
 
         // Verificar si hay datos
-        if (empty($response) || (!isset($response['root_statistics']) && !isset($response['total']))) {
+        if (empty($response) || (!isset($response['root_statistics']) && !isset($response['total']) && !isset($response['calldetail']) && !isset($response['loginhistory']) && !isset($response['queue_statistics']))) {
             $this->warn("⚠️ No se encontraron estadísticas para el período especificado.");
+            $this->info("💡 Sugerencia: Verifica que las colas tengan actividad en la fecha especificada.");
+            $this->info("💡 Puedes usar --today para buscar estadísticas de hoy.");
             return 0;
         }
 
-        // Parsear datos (pueden venir en root_statistics o directamente)
-        $data = $response['root_statistics'] ?? $response;
+        // Manejar diferentes tipos de respuestas
+        if ($statsType === 'calldetail') {
+            return $this->displayCallDetails($response, $startTime, $endTime);
+        } elseif ($statsType === 'loginhistory') {
+            return $this->displayLoginHistory($response, $startTime, $endTime);
+        } elseif ($statsType === 'pausedhistory') {
+            return $this->displayPausedHistory($response, $startTime, $endTime);
+        }
+
+        // Parsear datos para overview - manejar la estructura queue_statistics
+        if (isset($response['queue_statistics'])) {
+            // Nueva estructura de la API
+            $data = [
+                'total' => null,
+                'queue' => [],
+                'agent' => []
+            ];
+            
+            foreach ($response['queue_statistics'] as $queueStat) {
+                if (isset($queueStat['queue'])) {
+                    $data['queue'][] = $queueStat['queue'];
+                }
+                if (isset($queueStat['agent'])) {
+                    // Puede ser un array de agentes o un solo agente
+                    if (is_array($queueStat['agent'])) {
+                        $data['agent'] = array_merge($data['agent'], $queueStat['agent']);
+                    } else {
+                        $data['agent'][] = $queueStat['agent'];
+                    }
+                }
+            }
+        } else {
+            // Estructura antigua
+            $data = $response['root_statistics'] ?? $response;
+        }
         $total = $data['total'] ?? null;
         $queues = $data['queue'] ?? [];
         $agents = $data['agent'] ?? [];
@@ -1878,6 +2160,832 @@ class TestApiCommands extends Command
         $this->info("✅ Comando ejecutado exitosamente.");
 
         return 0;
+    }
+
+    /**
+     * Mostrar detalles de llamadas de cola
+     */
+    private function displayCallDetails(array $response, string $startTime, string $endTime): int
+    {
+        $this->info("✅ Detalles de llamadas obtenidos exitosamente:");
+        $this->newLine();
+
+        // Los detalles vienen en queue_statistics[].agent para calldetail
+        $callDetails = [];
+        if (isset($response['queue_statistics'])) {
+            foreach ($response['queue_statistics'] as $queueStat) {
+                if (isset($queueStat['agent'])) {
+                    $callDetails[] = $queueStat['agent'];
+                }
+            }
+        } else {
+            $callDetails = $response['calldetail'] ?? $response;
+        }
+        
+        if (empty($callDetails)) {
+            $this->warn("⚠️ No se encontraron detalles de llamadas para el período especificado.");
+            return 0;
+        }
+
+        // Contar estadísticas rápidas
+        $totalCalls = count($callDetails);
+        $answeredCalls = count(array_filter($callDetails, fn($call) => ($call['connect'] ?? '') === 'yes'));
+        $averageWait = $totalCalls > 0 ? round(array_sum(array_column($callDetails, 'wait_time')) / $totalCalls, 1) : 0;
+        $averageTalk = $answeredCalls > 0 ? round(array_sum(array_map(fn($call) => ($call['connect'] ?? '') === 'yes' ? ($call['talk_time'] ?? 0) : 0, $callDetails)) / $answeredCalls, 1) : 0;
+
+        $this->info("📊 Resumen rápido: {$totalCalls} intentos de llamada, {$answeredCalls} contestadas");
+        $this->info("⏱️ Espera promedio: {$averageWait}s | Conversación promedio: {$averageTalk}s");
+        $this->newLine();
+
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📞 DETALLES COMPLETOS DE LLAMADAS DE COLA</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        
+        // Agrupar por llamador y mostrar
+        $groupedCalls = [];
+        foreach ($callDetails as $call) {
+            $caller = $call['callernum'] ?? 'Desconocido';
+            $groupedCalls[$caller][] = $call;
+        }
+        
+        foreach ($groupedCalls as $caller => $calls) {
+            $this->newLine();
+            $this->line("<fg=yellow;options=bold>📱 Llamadas desde: {$caller}</>");
+            $this->line(str_repeat("─", 88));
+            
+            // Encabezados de tabla
+            $this->line(sprintf(
+                "  <fg=white;options=bold>%-19s %-8s %-8s %-6s %-6s %-10s</>",
+                'HORA', 'AGENTE', 'COLA', 'ESPERA', 'HABLÓ', 'CONTESTADA'
+            ));
+            $this->line("  " . str_repeat("─", 86));
+            
+            foreach ($calls as $call) {
+                $time = isset($call['start_time']) ? date('H:i:s', strtotime($call['start_time'])) : 'N/A';
+                $agent = $call['agent'] ?? 'N/A';
+                $queue = $call['extension'] ?? 'N/A';
+                $waitTime = ($call['wait_time'] ?? 0) . 's';
+                $talkTime = ($call['talk_time'] ?? 0) . 's';
+                $connected = ($call['connect'] ?? 'no') === 'yes' ? '✅ SÍ' : '❌ NO';
+                
+                // Colorear según si fue contestada
+                $connectColor = ($call['connect'] ?? 'no') === 'yes' ? 'green' : 'red';
+                $agentDisplay = $agent === 'NONE' ? '<fg=gray>NINGUNO</>' : $agent;
+                
+                $this->line(sprintf(
+                    "  %-19s %-8s %-8s %-6s %-6s <fg={$connectColor}>%-10s</>",
+                    $time,
+                    $agentDisplay,
+                    $queue,
+                    $waitTime,
+                    $talkTime,
+                    $connected
+                ));
+            }
+        }
+        
+        $this->newLine();
+        
+        // Tabla resumen por agente
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>👤 RESUMEN POR AGENTE</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        
+        $agentStats = [];
+        foreach ($callDetails as $call) {
+            $agent = $call['agent'] ?? 'NONE';
+            if (!isset($agentStats[$agent])) {
+                $agentStats[$agent] = [
+                    'intentos' => 0,
+                    'contestadas' => 0,
+                    'tiempo_espera' => 0,
+                    'tiempo_conversacion' => 0
+                ];
+            }
+            
+            $agentStats[$agent]['intentos']++;
+            if (($call['connect'] ?? 'no') === 'yes') {
+                $agentStats[$agent]['contestadas']++;
+                $agentStats[$agent]['tiempo_conversacion'] += intval($call['talk_time'] ?? 0);
+            }
+            $agentStats[$agent]['tiempo_espera'] += intval($call['wait_time'] ?? 0);
+        }
+        
+        $tableData = [];
+        foreach ($agentStats as $agent => $stats) {
+            $efectividad = $stats['intentos'] > 0 ? round(($stats['contestadas'] / $stats['intentos']) * 100, 1) : 0;
+            $promedioEspera = $stats['intentos'] > 0 ? round($stats['tiempo_espera'] / $stats['intentos'], 1) : 0;
+            $promedioConversacion = $stats['contestadas'] > 0 ? round($stats['tiempo_conversacion'] / $stats['contestadas'], 1) : 0;
+            
+            $tableData[] = [
+                $agent === 'NONE' ? 'NINGUNO' : $agent,
+                $stats['intentos'],
+                $stats['contestadas'],
+                $efectividad . '%',
+                $promedioEspera . 's',
+                $promedioConversacion . 's'
+            ];
+        }
+        
+        $this->table(
+            ['Agente', 'Intentos', 'Contestadas', 'Efectividad', 'Espera Prom.', 'Conversación Prom.'],
+            $tableData
+        );
+
+        $this->info("✅ Se mostraron {$totalCalls} intentos de llamada detallados.");
+        return 0;
+    }
+
+    /**
+     * Mostrar historial de login de agentes
+     */
+    private function displayLoginHistory(array $response, string $startTime, string $endTime): int
+    {
+        $this->info("✅ Historial de login obtenido exitosamente:");
+        $this->newLine();
+
+        $loginHistory = $response['loginhistory'] ?? $response;
+        
+        if (empty($loginHistory)) {
+            $this->warn("⚠️ No se encontró historial de login para el período especificado.");
+            return 0;
+        }
+
+        // Asegurar que loginHistory sea un array
+        if (!isset($loginHistory[0])) {
+            $loginHistory = [$loginHistory];
+        }
+
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>👤 HISTORIAL DE LOGIN DE AGENTES</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        
+        // Encabezados de tabla
+        $tableData = [];
+        foreach ($loginHistory as $login) {
+            $tableData[] = [
+                $login['agent'] ?? 'N/A',
+                $login['queue'] ?? 'N/A',
+                $login['login_time'] ?? 'N/A',
+                $login['logout_time'] ?? 'N/A',
+                $login['login_duration'] ?? 'N/A',
+                $login['status'] ?? 'N/A'
+            ];
+        }
+        
+        $this->table(
+            ['Agente', 'Cola', 'Login', 'Logout', 'Duración', 'Estado'],
+            $tableData
+        );
+
+        $this->info("✅ Se mostraron " . count($loginHistory) . " registros de login.");
+        return 0;
+    }
+
+    /**
+     * Mostrar historial de pausas de agentes
+     */
+    private function displayPausedHistory(array $response, string $startTime, string $endTime): int
+    {
+        $this->info("✅ Historial de pausas obtenido exitosamente:");
+        $this->newLine();
+
+        $pausedHistory = $response['pausedhistory'] ?? $response;
+        
+        if (empty($pausedHistory)) {
+            $this->warn("⚠️ No se encontró historial de pausas para el período especificado.");
+            return 0;
+        }
+
+        // Asegurar que pausedHistory sea un array
+        if (!isset($pausedHistory[0])) {
+            $pausedHistory = [$pausedHistory];
+        }
+
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>⏸️  HISTORIAL DE PAUSAS DE AGENTES</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        
+        // Encabezados de tabla
+        $tableData = [];
+        foreach ($pausedHistory as $pause) {
+            $tableData[] = [
+                $pause['agent'] ?? 'N/A',
+                $pause['queue'] ?? 'N/A',
+                $pause['pause_time'] ?? 'N/A',
+                $pause['unpause_time'] ?? 'N/A',
+                $pause['pause_duration'] ?? 'N/A',
+                $pause['pause_reason'] ?? 'N/A'
+            ];
+        }
+        
+        $this->table(
+            ['Agente', 'Cola', 'Inicio Pausa', 'Fin Pausa', 'Duración', 'Razón'],
+            $tableData
+        );
+
+        $this->info("✅ Se mostraron " . count($pausedHistory) . " registros de pausas.");
+        return 0;
+    }
+
+    /**
+     * Analizar KPIs de turnos - Obtener indicadores clave por franjas horarias
+     */
+    private function testKpiTurnos(): int
+    {
+        $queue = $this->option('queue');
+        $today = $this->option('today');
+        $startTime = $this->option('start-time');
+        $endTime = $this->option('end-time');
+        
+        // Manejar fechas por defecto
+        if ($today) {
+            $startTime = now()->format('Y-m-d');
+            $endTime = now()->format('Y-m-d');
+        } elseif (!$startTime || !$endTime) {
+            // Si no se especifican fechas, usar hoy por defecto
+            $startTime = now()->format('Y-m-d');
+            $endTime = now()->format('Y-m-d');
+            $this->info("📅 No se especificaron fechas, usando hoy: {$startTime}");
+        }
+
+        $queueLabel = $queue ? "cola {$queue}" : "todas las colas";
+        $this->info("📊 Analizando KPIs de turnos para {$queueLabel}...");
+        $this->info("📅 Período: {$startTime} al {$endTime}");
+        $this->newLine();
+
+        // Obtener CDR data - usar más registros para análisis completo
+        $params = [
+            'format' => 'json',
+            'numRecords' => 5000,
+            'minDur' => 0
+        ];
+        
+        // No usar filtros de fecha en la API, filtraremos después
+        // para obtener más datos y filtrar por fecha en el código
+
+        $response = $this->connectApi('cdrapi', $params, 120);
+
+        if (!isset($response['cdr_root']) || empty($response['cdr_root'])) {
+            $this->warn("⚠️ No se encontraron registros CDR para el período especificado.");
+            return 0;
+        }
+
+        $allCalls = $response['cdr_root'];
+        $this->info("📊 Se obtuvieron " . count($allCalls) . " registros CDR totales.");
+
+        // Filtrar por fecha en el código
+        $dateFilteredCalls = array_filter($allCalls, function($call) use ($startTime, $endTime) {
+            $callDate = $call['start'] ?? null;
+            if (!$callDate) return false;
+            
+            $callDateOnly = date('Y-m-d', strtotime($callDate));
+            return $callDateOnly >= $startTime && $callDateOnly <= $endTime;
+        });
+
+        $this->info("📅 Llamadas CDR en el período: " . count($dateFilteredCalls));
+
+        // Obtener datos de cola usando queueapi con calldetail
+        $queueParams = [
+            'format' => 'json',
+            'startTime' => $startTime,
+            'endTime' => $endTime,
+            'statisticsType' => 'calldetail'
+        ];
+        
+        if ($queue) {
+            $queueParams['queue'] = $queue;
+        }
+
+        $queueResponse = $this->connectApi('queueapi', $queueParams, 120);
+
+        if (!isset($queueResponse['queue_statistics']) || empty($queueResponse['queue_statistics'])) {
+            $this->warn("⚠️ No se encontraron datos de cola para el período especificado.");
+            $this->info("💡 Asegúrate de que la cola {$queue} tenga actividad en la fecha especificada.");
+            return 0;
+        }
+
+        // Extraer llamadas de cola de la respuesta
+        $queueCalls = [];
+        foreach ($queueResponse['queue_statistics'] as $queueStat) {
+            if (isset($queueStat['agent'])) {
+                $queueCalls[] = $queueStat['agent'];
+            }
+        }
+
+        $this->info("📞 Registros de cola encontrados: " . count($queueCalls));
+        $this->info("💡 Nota: Las llamadas CDR y los registros de cola pueden diferir (diferentes fuentes de datos)");
+        $this->newLine();
+
+        // Procesar KPIs por franjas horarias
+        $kpisByHour = $this->processKpisByHour($queueCalls);
+        
+        // Mostrar resultados
+        $this->displayKpiResults($kpisByHour, $queue);
+
+        return 0;
+    }
+
+    /**
+     * Procesar llamadas y calcular KPIs por hora
+     */
+    private function processKpisByHour(array $calls): array
+    {
+        $hourlyData = [];
+
+        foreach ($calls as $call) {
+            $startTime = $call['start_time'] ?? null;
+            if (!$startTime) continue;
+
+            $hour = date('H', strtotime($startTime));
+            
+            if (!isset($hourlyData[$hour])) {
+                $hourlyData[$hour] = [
+                    'hour' => $hour,
+                    'total_calls' => 0,
+                    'answered_calls' => 0,
+                    'abandoned_calls' => 0,
+                    'total_wait_time' => 0,
+                    'total_talk_time' => 0,
+                    'agents' => [],
+                    'call_details' => []
+                ];
+            }
+
+            $hourlyData[$hour]['total_calls']++;
+            $hourlyData[$hour]['call_details'][] = $call;
+
+            $connected = ($call['connect'] ?? 'no') === 'yes';
+            $agent = $call['agent'] ?? '';
+            
+            if ($connected) {
+                $hourlyData[$hour]['answered_calls']++;
+                $talkTime = intval($call['talk_time'] ?? 0);
+                $hourlyData[$hour]['total_talk_time'] += $talkTime;
+                
+                if ($agent && $agent !== 'NONE') {
+                    if (!isset($hourlyData[$hour]['agents'][$agent])) {
+                        $hourlyData[$hour]['agents'][$agent] = [
+                            'calls' => 0,
+                            'talk_time' => 0
+                        ];
+                    }
+                    $hourlyData[$hour]['agents'][$agent]['calls']++;
+                    $hourlyData[$hour]['agents'][$agent]['talk_time'] += $talkTime;
+                }
+            } else {
+                $hourlyData[$hour]['abandoned_calls']++;
+            }
+
+            // Tiempo de espera viene directamente del campo wait_time
+            $waitTime = intval($call['wait_time'] ?? 0);
+            $hourlyData[$hour]['total_wait_time'] += $waitTime;
+        }
+
+        // Ordenar por hora
+        ksort($hourlyData);
+        
+        return $hourlyData;
+    }
+
+    /**
+     * Mostrar resultados de KPIs
+     */
+    private function displayKpiResults(array $hourlyData, ?string $queue): void
+    {
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📊 KPIs DE TURNOS POR FRANJA HORARIA</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->newLine();
+
+        // Encabezados de tabla resumen
+        $this->line(sprintf(
+            "  <fg=white;options=bold>%-6s %-8s %-10s %-10s %-12s %-8s</>",
+            'HORA', 'VOLUMEN', 'ATENDIDAS', 'ABANDONO%', 'ESP.PROM', 'ASA'
+        ));
+        $this->line("  " . str_repeat("─", 88));
+
+        $totalCalls = 0;
+        $totalAnswered = 0;
+        $totalAbandoned = 0;
+        $totalWaitTime = 0;
+        $totalTalkTime = 0;
+
+        foreach ($hourlyData as $hour => $data) {
+            $totalCalls += $data['total_calls'];
+            $totalAnswered += $data['answered_calls'];
+            $totalAbandoned += $data['abandoned_calls'];
+            $totalWaitTime += $data['total_wait_time'];
+            $totalTalkTime += $data['total_talk_time'];
+
+            $abandonRate = $data['total_calls'] > 0 ? 
+                round(($data['abandoned_calls'] / $data['total_calls']) * 100, 1) : 0;
+            
+            $avgWaitTime = $data['total_calls'] > 0 ? 
+                round($data['total_wait_time'] / $data['total_calls'], 1) : 0;
+                
+            $asa = $data['answered_calls'] > 0 ? 
+                round($data['total_talk_time'] / $data['answered_calls'], 1) : 0;
+
+            // Colorear según umbrales críticos
+            $abandonColor = $abandonRate > 20 ? 'red' : ($abandonRate > 15 ? 'yellow' : 'green');
+            $waitColor = $avgWaitTime > 60 ? 'red' : ($avgWaitTime > 30 ? 'yellow' : 'green');
+            $asaColor = $asa > 60 ? 'red' : ($asa > 30 ? 'yellow' : 'green');
+
+            $this->line(sprintf(
+                "  %-6s %-8s %-10s <fg={$abandonColor}>%-10s</> <fg={$waitColor}>%-12s</> <fg={$asaColor}>%-8s</>",
+                $hour . ':00',
+                $data['total_calls'],
+                $data['answered_calls'],
+                $abandonRate . '%',
+                $avgWaitTime . 's',
+                $asa . 's'
+            ));
+        }
+
+        $this->line("  " . str_repeat("═", 88));
+
+        // Resumen global
+        $globalAbandonRate = $totalCalls > 0 ? round(($totalAbandoned / $totalCalls) * 100, 1) : 0;
+        $globalAvgWait = $totalCalls > 0 ? round($totalWaitTime / $totalCalls, 1) : 0;
+        $globalAsa = $totalAnswered > 0 ? round($totalTalkTime / $totalAnswered, 1) : 0;
+
+        $this->line(sprintf(
+            "  <fg=cyan;options=bold>%-6s %-8s %-10s %-10s %-12s %-8s</>",
+            'TOTAL',
+            $totalCalls,
+            $totalAnswered,
+            $globalAbandonRate . '%',
+            $globalAvgWait . 's',
+            $globalAsa . 's'
+        ));
+
+        $this->newLine();
+
+        // Análisis por agente en el período más activo
+        $mostActiveHour = array_reduce($hourlyData, function($max, $current) {
+            return ($current['total_calls'] ?? 0) > ($max['total_calls'] ?? 0) ? $current : $max;
+        }, ['total_calls' => 0]);
+
+        if ($mostActiveHour['total_calls'] > 0) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            $this->line("<fg=yellow;options=bold>👤 RENDIMIENTO DE AGENTES - HORA PICO ({$mostActiveHour['hour']}:00)</>");
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            
+            if (!empty($mostActiveHour['agents'])) {
+                $agentTableData = [];
+                foreach ($mostActiveHour['agents'] as $agent => $stats) {
+                    $avgTalkTime = $stats['calls'] > 0 ? round($stats['talk_time'] / $stats['calls'], 1) : 0;
+                    $agentTableData[] = [
+                        $agent,
+                        $stats['calls'],
+                        gmdate('i:s', $stats['talk_time']),
+                        $avgTalkTime . 's'
+                    ];
+                }
+                
+                $this->table(
+                    ['Agente', 'Llamadas Atendidas', 'Tiempo Total', 'Promedio/Llamada'],
+                    $agentTableData
+                );
+            } else {
+                $this->info("  No hay datos de agentes para mostrar.");
+            }
+        }
+
+        $this->newLine();
+
+        // Alertas y recomendaciones
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>⚠️  ALERTAS Y RECOMENDACIONES</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+
+        $alertsFound = false;
+
+        foreach ($hourlyData as $hour => $data) {
+            $abandonRate = $data['total_calls'] > 0 ? 
+                ($data['abandoned_calls'] / $data['total_calls']) * 100 : 0;
+            $avgWaitTime = $data['total_calls'] > 0 ? 
+                $data['total_wait_time'] / $data['total_calls'] : 0;
+
+            if ($abandonRate > 20) {
+                $this->line("  <fg=red>🚨 CRÍTICO:</> Hora {$hour}:00 - Abandono muy alto ({$abandonRate}%). Requiere más agentes.");
+                $alertsFound = true;
+            } elseif ($abandonRate > 15) {
+                $this->line("  <fg=yellow>⚠️  ALERTA:</> Hora {$hour}:00 - Abandono elevado ({$abandonRate}%). Considerar refuerzo.");
+                $alertsFound = true;
+            }
+
+            if ($avgWaitTime > 60) {
+                $this->line("  <fg=red>🚨 CRÍTICO:</> Hora {$hour}:00 - Espera muy larga ({$avgWaitTime}s). Optimizar distribución.");
+                $alertsFound = true;
+            } elseif ($avgWaitTime > 30) {
+                $this->line("  <fg=yellow>⚠️  ALERTA:</> Hora {$hour}:00 - Espera prolongada ({$avgWaitTime}s). Revisar capacidad.");
+                $alertsFound = true;
+            }
+        }
+
+        if (!$alertsFound) {
+            $this->line("  <fg=green>✅ EXCELENTE:</> No se detectaron problemas críticos en los KPIs analizados.");
+        }
+
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        
+        $this->newLine();
+        $this->info("✅ Análisis de KPIs completado exitosamente.");
+    }
+
+    /**
+     * Explorar todos los action_type disponibles en las llamadas CDR
+     */
+    private function exploreActionTypes(): int
+    {
+        $this->info("🔍 Explorando tipos de ACTION_TYPE en las llamadas...");
+        $this->info("📅 Consultando base de datos local para historial completo...");
+        $this->newLine();
+
+        $pbxId = $this->getActivePbxId();
+
+        // Obtener conteo por mes de la BD local
+        $monthlyData = \DB::table('calls')
+            ->where('pbx_connection_id', $pbxId)
+            ->selectRaw('DATE_FORMAT(start_time, "%Y-%m") as mes')
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw('MIN(start_time) as primera')
+            ->selectRaw('MAX(start_time) as ultima')
+            ->groupBy('mes')
+            ->orderBy('mes', 'DESC')
+            ->get();
+
+        if ($monthlyData->isEmpty()) {
+            $this->warn("⚠️ No se encontraron registros en la base de datos.");
+            $this->newLine();
+            $this->info("💡 Tip: Ejecuta primero la sincronización de llamadas para poblar la BD.");
+            return 0;
+        }
+
+        $totalRecords = $monthlyData->sum('total');
+        $this->info("✓ Total de llamadas en BD: " . number_format($totalRecords));
+        $this->info("✓ Rango: {$monthlyData->last()->primera} hasta {$monthlyData->first()->ultima}");
+        $this->newLine();
+
+        // Mostrar resumen por mes
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📅 REGISTROS POR MES (HISTÓRICO COMPLETO DESDE BD LOCAL)</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->newLine();
+        
+        $maxCount = $monthlyData->max('total');
+        
+        foreach ($monthlyData as $row) {
+            $percentage = $totalRecords > 0 ? round(($row->total / $totalRecords) * 100, 2) : 0;
+            // Barra proporcional al mes con más registros
+            $barLength = $maxCount > 0 ? (int)(($row->total / $maxCount) * 40) : 0;
+            $bar = str_repeat('█', $barLength);
+            
+            $this->line(sprintf(
+                "  <fg=white>%s</>  <fg=cyan>%-8s</> <fg=green>%-40s</> %.2f%%",
+                $row->mes,
+                number_format($row->total),
+                $bar,
+                $percentage
+            ));
+        }
+        
+        $this->newLine();
+        $this->line(sprintf(
+            "  <fg=white;options=bold>TOTAL</>   <fg=cyan;options=bold>%-8s</> 100%%",
+            number_format($totalRecords)
+        ));
+        $this->newLine();
+
+        // Ahora obtener datos de la API para analizar action_type en registros recientes
+        $this->info("📥 Consultando API para analizar campos detallados (registros recientes)...");
+        $params = [
+            'format' => 'json',
+            'numRecords' => 1000,
+            'minDur' => 0
+        ];
+
+        $response = $this->connectApi('cdrapi', $params, 120);
+
+        if (!isset($response['cdr_root']) || empty($response['cdr_root'])) {
+            $this->warn("⚠️ No se pudieron obtener registros de la API para análisis detallado.");
+            return 0;
+        }
+
+        $calls = array_filter($response['cdr_root'], function($call) {
+            return isset($call['start']) && !empty($call['start']);
+        });
+
+        $this->info("✓ Analizando " . count($calls) . " registros recientes de la API");
+        $this->newLine();
+
+        // Analizar action_type
+        $actionTypes = [];
+        $actionOwners = [];
+        $lastApps = [];
+        $lastDatas = [];
+        $dispositions = [];
+        $examplesByType = [];
+
+        foreach ($calls as $call) {
+            // Action Type
+            $type = $call['action_type'] ?? 'NO_DEFINIDO';
+            if (!isset($actionTypes[$type])) {
+                $actionTypes[$type] = 0;
+                $examplesByType[$type] = $call;
+            }
+            $actionTypes[$type]++;
+
+            // Action Owner
+            $owner = $call['action_owner'] ?? 'NO_DEFINIDO';
+            $actionOwners[$owner] = ($actionOwners[$owner] ?? 0) + 1;
+
+            // Last App
+            $lastApp = $call['lastapp'] ?? 'NO_DEFINIDO';
+            $lastApps[$lastApp] = ($lastApps[$lastApp] ?? 0) + 1;
+
+            // Last Data
+            $lastData = $call['lastdata'] ?? 'NO_DEFINIDO';
+            // Limitar longitud para análisis
+            $lastDataShort = strlen($lastData) > 50 ? substr($lastData, 0, 50) . '...' : $lastData;
+            $lastDatas[$lastDataShort] = ($lastDatas[$lastDataShort] ?? 0) + 1;
+
+            // Disposition
+            $disp = $call['disposition'] ?? 'NO_DEFINIDO';
+            $dispositions[$disp] = ($dispositions[$disp] ?? 0) + 1;
+        }
+
+        // Ordenar todos por cantidad
+        arsort($actionTypes);
+        arsort($actionOwners);
+        arsort($lastApps);
+        arsort($lastDatas);
+        arsort($dispositions);
+
+        // ========== MOSTRAR ACTION_TYPE ==========
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📊 ACTION_TYPE ENCONTRADOS</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->newLine();
+
+        $this->line(sprintf(
+            "  <fg=white;options=bold>%-30s %-12s %-10s</>",
+            'ACTION_TYPE', 'CANTIDAD', '%'
+        ));
+        $this->line("  " . str_repeat("─", 60));
+
+        foreach ($actionTypes as $type => $count) {
+            $percentage = round(($count / $totalRecords) * 100, 2);
+            $color = $percentage > 50 ? 'green' : ($percentage > 20 ? 'yellow' : 'white');
+            
+            $this->line(sprintf(
+                "  <fg={$color}>%-30s %-12d %s</>",
+                $type,
+                $count,
+                $percentage . '%'
+            ));
+        }
+
+        // ========== MOSTRAR ACTION_OWNER ==========
+        $this->newLine();
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>👤 ACTION_OWNER ENCONTRADOS</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->newLine();
+
+        $this->line(sprintf(
+            "  <fg=white;options=bold>%-30s %-12s %-10s</>",
+            'ACTION_OWNER', 'CANTIDAD', '%'
+        ));
+        $this->line("  " . str_repeat("─", 60));
+
+        $displayCount = 0;
+        foreach ($actionOwners as $owner => $count) {
+            if ($displayCount++ >= 15) break; // Limitar a top 15
+            $percentage = round(($count / $totalRecords) * 100, 2);
+            $color = $percentage > 50 ? 'green' : ($percentage > 20 ? 'yellow' : 'white');
+            
+            $this->line(sprintf(
+                "  <fg={$color}>%-30s %-12d %s</>",
+                strlen($owner) > 30 ? substr($owner, 0, 27) . '...' : $owner,
+                $count,
+                $percentage . '%'
+            ));
+        }
+
+        // ========== MOSTRAR LAST_APP ==========
+        $this->newLine();
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📱 LAST_APP ENCONTRADOS (Aplicación Final)</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->newLine();
+
+        $this->line(sprintf(
+            "  <fg=white;options=bold>%-30s %-12s %-10s</>",
+            'LAST_APP', 'CANTIDAD', '%'
+        ));
+        $this->line("  " . str_repeat("─", 60));
+
+        foreach ($lastApps as $app => $count) {
+            $percentage = round(($count / $totalRecords) * 100, 2);
+            $color = $percentage > 50 ? 'green' : ($percentage > 20 ? 'yellow' : 'white');
+            
+            $this->line(sprintf(
+                "  <fg={$color}>%-30s %-12d %s</>",
+                $app,
+                $count,
+                $percentage . '%'
+            ));
+        }
+
+        // ========== MOSTRAR DISPOSITION ==========
+        $this->newLine();
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📞 DISPOSITION ENCONTRADOS (Estado Final)</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->newLine();
+
+        $this->line(sprintf(
+            "  <fg=white;options=bold>%-30s %-12s %-10s</>",
+            'DISPOSITION', 'CANTIDAD', '%'
+        ));
+        $this->line("  " . str_repeat("─", 60));
+
+        foreach ($dispositions as $disp => $count) {
+            $percentage = round(($count / $totalRecords) * 100, 2);
+            $color = match($disp) {
+                'ANSWERED' => 'green',
+                'NO ANSWER' => 'yellow',
+                'BUSY', 'FAILED' => 'red',
+                default => 'white'
+            };
+            
+            $this->line(sprintf(
+                "  <fg={$color}>%-30s %-12d %s</>",
+                $disp,
+                $count,
+                $percentage . '%'
+            ));
+        }
+
+        // ========== EJEMPLOS DETALLADOS ==========
+        $this->newLine();
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📝 EJEMPLOS DETALLADOS POR ACTION_TYPE</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->newLine();
+
+        foreach ($actionTypes as $type => $count) {
+            $example = $examplesByType[$type];
+            
+            $this->line("<fg=yellow;options=bold>🔹 {$type}</> ({$count} ocurrencias)");
+            $this->line("  <fg=white>Fecha:</>           " . ($example['start'] ?? 'N/A'));
+            $this->line("  <fg=white>Origen:</>          " . ($example['src'] ?? 'N/A') . " → Destino: " . ($example['dst'] ?? 'N/A'));
+            $this->line("  <fg=white>Respondió:</>       " . ($example['dstanswer'] ?? 'N/A'));
+            $this->line("  <fg=white>Disposition:</>     " . ($example['disposition'] ?? 'N/A'));
+            $this->line("  <fg=white>Duración:</>        " . gmdate('i:s', $example['duration'] ?? 0));
+            $this->line("  <fg=white>Action Owner:</>    " . ($example['action_owner'] ?? 'N/A'));
+            $this->line("  <fg=white>Last App:</>        " . ($example['lastapp'] ?? 'N/A'));
+            $this->line("  <fg=white>Last Data:</>       " . (isset($example['lastdata']) ? (strlen($example['lastdata']) > 80 ? substr($example['lastdata'], 0, 80) . '...' : $example['lastdata']) : 'N/A'));
+            $this->line("  <fg=white>Channel:</>         " . ($example['channel'] ?? 'N/A'));
+            $this->newLine();
+        }
+
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->newLine();
+        
+        $this->info("✅ Exploración completada:");
+        $this->info("   - " . count($actionTypes) . " tipos de ACTION_TYPE");
+        $this->info("   - " . count($actionOwners) . " tipos de ACTION_OWNER");
+        $this->info("   - " . count($lastApps) . " tipos de LAST_APP");
+        $this->info("   - " . count($dispositions) . " tipos de DISPOSITION");
+
+        return 0;
+    }
+
+    /**
+     * Obtener descripción de un action_type
+     */
+    private function getActionTypeDescription(string $type): string
+    {
+        return match($type) {
+            'NO_DEFINIDO' => 'No tiene action_type definido',
+            'Outgoing' => 'Llamada saliente',
+            'Incoming' => 'Llamada entrante',
+            'Internal' => 'Llamada interna entre extensiones',
+            'Queue' => 'Llamada a través de cola',
+            'IVR' => 'Llamada procesada por IVR',
+            'Voicemail' => 'Dejó mensaje de voz',
+            'Conference' => 'Llamada en conferencia',
+            'Transfer' => 'Llamada transferida',
+            'Forward' => 'Llamada reenviada',
+            'Callback' => 'Devolución de llamada',
+            'Pickup' => 'Llamada capturada',
+            'Park' => 'Llamada estacionada',
+            default => 'Tipo no documentado'
+        };
     }
 }
 

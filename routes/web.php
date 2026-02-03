@@ -6,6 +6,7 @@ use App\Http\Controllers\ExtensionController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\PbxConnectionController;
+use App\Http\Controllers\UserController;
 
 /*
 |--------------------------------------------------------------------------
@@ -45,9 +46,28 @@ Route::middleware(['auth'])->prefix('pbx')->name('pbx.')->group(function () {
         Route::put('/{pbx}', [PbxConnectionController::class, 'update'])->name('update');
         Route::delete('/{pbx}', [PbxConnectionController::class, 'destroy'])->name('destroy');
         Route::get('/setup/{pbx}', [PbxConnectionController::class, 'setup'])->name('setup');
-        Route::post('/sync/{pbx}', [PbxConnectionController::class, 'syncInitial'])->name('syncInitial');
+        
+        // Endpoints AJAX para sincronización sin colas
+        Route::post('/sync-extensions/{pbx}', [PbxConnectionController::class, 'syncExtensions'])->name('syncExtensions');
+        Route::post('/sync-calls/{pbx}', [PbxConnectionController::class, 'syncCalls'])->name('syncCalls');
+        Route::post('/finish-sync/{pbx}', [PbxConnectionController::class, 'finishSync'])->name('finishSync');
+        
         Route::post('/disconnect', [PbxConnectionController::class, 'disconnect'])->name('disconnect');
     });
+});
+
+
+// ==========================================
+// 3. RUTAS DE GESTIÓN DE USUARIOS (Solo Admin)
+// ==========================================
+Route::middleware(['auth', 'admin'])->prefix('usuarios')->name('users.')->group(function () {
+    Route::get('/', [UserController::class, 'index'])->name('index');
+    Route::get('/crear', [UserController::class, 'create'])->name('create');
+    Route::post('/', [UserController::class, 'store'])->name('store');
+    Route::get('/{user}/editar', [UserController::class, 'edit'])->name('edit');
+    Route::put('/{user}', [UserController::class, 'update'])->name('update');
+    Route::delete('/{user}', [UserController::class, 'destroy'])->name('destroy');
+    Route::post('/template-permissions', [UserController::class, 'getTemplatePermissions'])->name('template-permissions');
 });
 
 
@@ -67,12 +87,10 @@ Route::middleware(['auth', 'pbx.selected'])->group(function () {
     Route::get('/exportar-excel', [App\Http\Controllers\CdrController::class, 'exportarExcel'])->name('calls.export');
     Route::get('/tarifas', [SettingController::class, 'index'])->name('settings.index');
 
-    // Funciones que requieren administrador (llamadas a API)
-    Route::middleware(['admin'])->group(function () {
-        Route::post('/sync', [CdrController::class, 'syncCDRs'])->name('cdr.sync');
-        Route::post('/extension/update', [ExtensionController::class, 'update'])->name('extension.update');
-        Route::post('/extension/update-ips', [ExtensionController::class, 'updateIps'])->name('extension.updateIps');
-        Route::post('/tarifas', [SettingController::class, 'update'])->name('settings.update');
-    });
+    // Funciones que requieren permisos específicos (verificados en el controlador)
+    Route::post('/sync', [CdrController::class, 'syncCDRs'])->name('cdr.sync');
+    Route::post('/extension/update', [ExtensionController::class, 'update'])->name('extension.update');
+    Route::post('/extension/update-ips', [ExtensionController::class, 'updateIps'])->name('extension.updateIps');
+    Route::post('/tarifas', [SettingController::class, 'update'])->name('settings.update');
 
 });

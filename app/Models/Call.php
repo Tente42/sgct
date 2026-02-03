@@ -38,13 +38,20 @@ class Call extends Model
         'pbx_connection_id', // ID de la central PBX
         'unique_id',      // ID unico de la central
         'start_time',     // Hora inicio
+        'answer_time',    // Hora en que se contestó
         'end_time',       // Hora fin
         'source',         // Origen (Anexo)
         'destination',    // Destino (Número marcado)
+        'dstanswer',      // Extensión/agente que contestó
         'caller_name',    // Nombre del que llama
         'duration',       // Duracion total
         'billsec',        // Segundos cobrados
         'disposition',    // Estado (ANSWERED, BUSY, etc.)
+        'action_type',    // Tipo de acción (DIAL, QUEUE, etc.)
+        'lastapp',        // Última aplicación ejecutada
+        'channel',        // Canal de origen
+        'dst_channel',    // Canal de destino
+        'src_trunk_name', // Nombre del trunk de origen
         'recording_file', // Archivo de grabacion (si existe)
     ];
 

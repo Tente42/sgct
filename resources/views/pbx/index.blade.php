@@ -299,12 +299,37 @@
         @else
             <div class="grid">
                 @foreach($connections as $connection)
-                    <div class="card {{ session('active_pbx_id') === $connection->id ? 'active' : '' }}">
+                    @php
+                        $cardClass = session('active_pbx_id') === $connection->id ? 'active' : '';
+                        if ($connection->status === 'syncing') $cardClass .= ' syncing';
+                        if ($connection->status === 'pending') $cardClass .= ' pending';
+                        if ($connection->status === 'error') $cardClass .= ' error';
+                    @endphp
+                    <div class="card {{ $cardClass }}">
+                        {{-- Overlay para centrales en sincronización --}}
+                        @if($connection->status === 'syncing' && !auth()->user()->isAdmin())
+                            <div class="sync-overlay">
+                                <i class="fas fa-sync fa-spin"></i>
+                                <p>Sincronizando datos...</p>
+                                <p style="font-size: 0.8rem; color: #999;">Disponible pronto</p>
+                            </div>
+                        @endif
+
                         <div class="card-header">
                             <h3>
                                 {{ $connection->name ?? 'Sin nombre' }}
                                 @if(session('active_pbx_id') === $connection->id)
                                     <span class="badge-active">ACTIVA</span>
+                                @endif
+                                @if(auth()->user()->isAdmin() && $connection->status !== 'ready')
+                                    <span class="badge-status badge-{{ $connection->status }}">
+                                        @switch($connection->status)
+                                            @case('pending') PENDIENTE @break
+                                            @case('syncing') SINCRONIZANDO @break
+                                            @case('error') ERROR @break
+                                            @default {{ strtoupper($connection->status) }}
+                                        @endswitch
+                                    </span>
                                 @endif
                             </h3>
                             <div class="ip"><i class="fas fa-network-wired"></i> {{ $connection->ip }}:{{ $connection->port }}</div>
@@ -314,9 +339,33 @@
                                 <i class="fas fa-user"></i> Usuario: <span>{{ $connection->username }}</span><br>
                                 <i class="fas fa-shield-alt"></i> SSL: 
                                 <span>{{ $connection->verify_ssl ? 'Verificado' : 'Sin verificar' }}</span>
+                                @if(auth()->user()->isAdmin() && $connection->last_sync_at)
+                                    <br><i class="fas fa-clock"></i> Última sync: 
+                                    <span>{{ $connection->last_sync_at->diffForHumans() }}</span>
+                                @endif
                             </div>
 
-                            @if(session('active_pbx_id') === $connection->id)
+                            {{-- Mostrar mensaje de error si existe --}}
+                            @if(auth()->user()->isAdmin() && $connection->status === 'error' && $connection->sync_message)
+                                <div style="background: #f8d7da; color: #721c24; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 0.85rem;">
+                                    <i class="fas fa-exclamation-triangle"></i> {{ $connection->sync_message }}
+                                </div>
+                            @endif
+
+                            {{-- Botón para continuar configuración (solo admin, estado pending) --}}
+                            @if(auth()->user()->isAdmin() && $connection->status === 'pending')
+                                <a href="{{ route('pbx.setup', $connection) }}" class="btn-connect" style="background: #ffc107; color: #333;">
+                                    <i class="fas fa-cog"></i> CONFIGURAR CENTRAL
+                                </a>
+                            @elseif(auth()->user()->isAdmin() && $connection->status === 'syncing')
+                                <a href="{{ route('pbx.setup', $connection) }}" class="btn-connect" style="background: #17a2b8;">
+                                    <i class="fas fa-sync fa-spin"></i> VER PROGRESO
+                                </a>
+                            @elseif(auth()->user()->isAdmin() && $connection->status === 'error')
+                                <a href="{{ route('pbx.setup', $connection) }}" class="btn-connect" style="background: #dc3545;">
+                                    <i class="fas fa-redo"></i> REINTENTAR SYNC
+                                </a>
+                            @elseif(session('active_pbx_id') === $connection->id)
                                 @if(auth()->user()->isAdmin())
                                 <form action="{{ route('pbx.disconnect') }}" method="POST">
                                     @csrf
@@ -329,7 +378,7 @@
                                     <i class="fas fa-check-circle" style="color: #28a745;"></i> Central Activa
                                 </div>
                                 @endif
-                            @else
+                            @elseif($connection->status === 'ready')
                                 <a href="{{ route('pbx.select', $connection) }}" class="btn-connect">
                                     <i class="fas fa-plug"></i> CONECTAR
                                 </a>

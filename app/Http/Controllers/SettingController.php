@@ -21,6 +21,11 @@ class SettingController extends Controller
      */
     public function update(Request $request)
     {
+        // Verificar permiso
+        if (!auth()->user()->canEditRates()) {
+            abort(403, 'No tienes permiso para editar tarifas.');
+        }
+
         // Recorrer todos los inputs excepto el token CSRF
         foreach ($request->except('_token') as $key => $value) {
             Setting::where('key', $key)->update(['value' => (int) $value]);

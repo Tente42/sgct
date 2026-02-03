@@ -14,6 +14,11 @@ class ExtensionController extends Controller
     
     public function update(Request $request)
     {
+        // Verificar permiso
+        if (!auth()->user()->canEditExtensions()) {
+            abort(403, 'No tienes permiso para editar anexos.');
+        }
+
         // 1. Validacion de datos
         $request->validate([
             'extension' => 'required|string', 
@@ -155,6 +160,11 @@ class ExtensionController extends Controller
      */
     public function updateIps()
     {
+        // Verificar permiso
+        if (!auth()->user()->canUpdateIps()) {
+            abort(403, 'No tienes permiso para actualizar IPs.');
+        }
+
         if (!$this->testConnection()) {
             return back()->with('error', 'Error: No se pudo conectar con la Central Telefónica. Verifique la red.');
         }

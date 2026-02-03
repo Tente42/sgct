@@ -13,7 +13,7 @@
                 <span class="text-gray-500 text-sm">Generado: {{ date('d/m/Y H:i') }}</span>
             </div>
             
-            @if(Auth::user()->isAdmin())
+            @if(Auth::user()->canSyncCalls())
             <form action="{{ route('cdr.sync') }}" method="POST" class="inline">
                 @csrf
                 <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded shadow-md"
@@ -102,16 +102,20 @@
                             <i class="fas fa-calculator"></i> Calcular
                         </button>
                         
+                        @if(Auth::user()->canExportPdf())
                         <button type="button" 
                                 onclick="pedirTituloYDescargar()" 
                                 class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded" 
                                 title="Descargar PDF">
                             <i class="fas fa-file-pdf"></i> PDF
                         </button> 
+                        @endif
+                        @if(Auth::user()->canExportExcel())
                         <a href="{{ route('calls.export', request()->all()) }}" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded text-center">
                             <i class="fas fa-file-excel"></i> Excel
 
                         </a>
+                        @endif
 
                         <a href="{{ url('/') }}" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded text-center" title="Limpiar">
                             <i class="fas fa-undo"></i>
