@@ -320,9 +320,15 @@ class PbxConnectionController extends Controller
             // Calcular rango del mes
             $startDate = Carbon::create($year, $month, 1)->startOfMonth();
             $endDate = $startDate->copy()->endOfMonth();
+            
+            // Para el mes actual, sincronizar solo hasta ayer (evitar datos incompletos del día actual)
+            $yesterday = Carbon::yesterday()->endOfDay();
+            if ($endDate->greaterThan($yesterday)) {
+                $endDate = $yesterday;
+            }
 
-            // No sincronizar meses futuros
-            if ($startDate->isFuture()) {
+            // No sincronizar si el rango completo es futuro
+            if ($startDate->greaterThan($yesterday)) {
                 return response()->json([
                     'success' => true,
                     'message' => 'Mes futuro, saltando',
