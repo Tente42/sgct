@@ -163,6 +163,11 @@ class PbxConnectionController extends Controller
      */
     public function syncExtensions(PbxConnection $pbx): JsonResponse
     {
+        // Sin límite de tiempo para sincronización larga
+        set_time_limit(0);
+        ini_set('max_execution_time', '0');
+        ini_set('memory_limit', '512M');
+
         try {
             // Marcar como sincronizando
             $pbx->update([
@@ -290,6 +295,11 @@ class PbxConnectionController extends Controller
      */
     public function syncCalls(Request $request, PbxConnection $pbx): JsonResponse
     {
+        // Sin límite de tiempo para sincronización larga
+        set_time_limit(0);
+        ini_set('max_execution_time', '0');
+        ini_set('memory_limit', '1024M');
+
         try {
             $year = (int) $request->input('year', date('Y'));
             $month = (int) $request->input('month', 1);
