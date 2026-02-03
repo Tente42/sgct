@@ -350,7 +350,7 @@ class PbxConnectionController extends Controller
                             'billsec' => (int)($cdr['Billsec'] ?? 0),
                             'disposition' => $cdr['Disposition'] ?? 'UNKNOWN',
                             'call_type' => $this->determineCallType($cdr['dst'] ?? ''),
-                            // Nuevos campos detallados
+                            // Nuevos campos detallados del CDR
                             'action_type' => $cdr['action_type'] ?? null,
                             'answer_time' => $cdr['AnswerTime'] ?? null,
                             'dstanswer' => $cdr['dstanswer'] ?? null,

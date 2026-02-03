@@ -95,6 +95,26 @@ npm run build
 
 Edita el archivo `.env` con los valores correspondientes a tu entorno:
 
+###  URL de la Aplicación (MUY IMPORTANTE)
+
+La variable `APP_URL` debe coincidir **exactamente** con la URL desde donde accedes a la aplicación:
+
+```env
+# Si accedes desde: http://localhost/panel-gestion-llamadas
+APP_URL=http://localhost/panel-gestion-llamadas
+
+# Si accedes desde otra PC en red: http://10.61.17.92/panel-gestion-llamadas
+APP_URL=http://10.61.17.92/panel-gestion-llamadas
+
+# Si usas Virtual Host: http://panel-llamadas.local
+APP_URL=http://panel-llamadas.local
+
+# En producción con dominio:
+APP_URL=https://llamadas.tuempresa.com
+```
+
+>  **Nota:** Si `APP_URL` no coincide con la URL real, la sincronización y otras funciones AJAX fallarán con error 404.
+
 ###  Base de Datos (OJO CON LOS # AL COMIENZO, QUEDAN COMO COMENTARIO)
 
 Para **MySQL**:
@@ -252,17 +272,46 @@ Abre el **Panel de Control de XAMPP** e inicia:
 -  **Apache**
 -  **MySQL**
 
-### 2. Configurar Virtual Host (Opcional)
+### 2. Configurar APP_URL (OBLIGATORIO)
 
-Para acceder mediante un dominio personalizado, edita el archivo `httpd-vhosts.conf`:
+Edita el archivo `.env` y configura `APP_URL` según cómo vas a acceder:
+
+```env
+# Si solo usas localhost:
+APP_URL=http://localhost/panel-gestion-llamadas
+
+# Si accedes desde otra PC en la red (cambia la IP por la de tu servidor):
+APP_URL=http://10.61.17.92/panel-gestion-llamadas
+```
+
+>  **Importante:** Sin esta configuración, la sincronización fallará con error 404.
+
+### 3. Limpiar caché después de cambiar .env
+
+```bash
+php artisan config:clear
+php artisan cache:clear
+php artisan route:clear
+```
+
+### 4. Acceder a la aplicación
+
+- **Mismo PC:** `http://localhost/panel-gestion-llamadas`
+- **Otra PC en red:** `http://[IP-DEL-SERVIDOR]/panel-gestion-llamadas`
+
+> Gracias al archivo `.htaccess` en la raíz, ya no necesitas agregar `/public` a la URL.
+
+### 5. Configurar Virtual Host (Opcional)
+
+Para acceder mediante un dominio personalizado (sin subdirectorio), edita el archivo `httpd-vhosts.conf`:
 
 **Windows:** `C:\xampp\apache\conf\extra\httpd-vhosts.conf`
 
 ```apache
 <VirtualHost *:80>
-    DocumentRoot "C:/xampp/htdocs/panel-llamadas/public"
+    DocumentRoot "C:/xampp/htdocs/panel-gestion-llamadas/public"
     ServerName panel-llamadas.local
-    <Directory "C:/xampp/htdocs/panel-llamadas/public">
+    <Directory "C:/xampp/htdocs/panel-gestion-llamadas/public">
         AllowOverride All
         Require all granted
     </Directory>
@@ -276,13 +325,12 @@ Y agrega al archivo `hosts`:
 127.0.0.1 panel-llamadas.local
 ```
 
-### 3. Acceder a la aplicación
+Si usas Virtual Host, actualiza `.env`:
+```env
+APP_URL=http://panel-llamadas.local
+```
 
-- **Sin Virtual Host:** `http://localhost/panel-llamadas/public`
-- **Con Virtual Host:** `http://panel-llamadas.local`
-- **En red local:** `http://[IP-DEL-SERVIDOR]/panel-llamadas/public`
-
-### 4. Compilar assets en desarrollo (opcional)
+### 6. Compilar assets en desarrollo (opcional)
 
 Si necesitas modificar estilos o JavaScript:
 

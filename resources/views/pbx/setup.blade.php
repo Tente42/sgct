@@ -374,8 +374,16 @@
                     }
                 },
 
+                // URLs generadas por Laravel (funciona en subdirectorios)
+                urls: {
+                    syncExtensions: '{{ route("pbx.syncExtensions", $pbx->id) }}',
+                    syncCalls: '{{ route("pbx.syncCalls", $pbx->id) }}',
+                    finishSync: '{{ route("pbx.finishSync", $pbx->id) }}',
+                    syncStatus: '{{ route("pbx.syncStatus", $pbx->id) }}'
+                },
+
                 async syncExtensions() {
-                    const response = await fetch(`/pbx/sync-extensions/${this.pbxId}`, {
+                    const response = await fetch(this.urls.syncExtensions, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -385,13 +393,13 @@
                     });
                     if (!response.ok) {
                         const text = await response.text();
-                        throw new Error(text.substring(0, 200));
+                        throw new Error(`Error ${response.status}: ${text.substring(0, 100)}`);
                     }
                     return await response.json();
                 },
 
                 async syncCallsMonth(year, month) {
-                    const response = await fetch(`/pbx/sync-calls/${this.pbxId}`, {
+                    const response = await fetch(this.urls.syncCalls, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -402,13 +410,13 @@
                     });
                     if (!response.ok) {
                         const text = await response.text();
-                        throw new Error(text.substring(0, 200));
+                        throw new Error(`Error ${response.status}: ${text.substring(0, 100)}`);
                     }
                     return await response.json();
                 },
 
                 async finishSync() {
-                    const response = await fetch(`/pbx/finish-sync/${this.pbxId}`, {
+                    const response = await fetch(this.urls.finishSync, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -418,39 +426,43 @@
                     });
                     if (!response.ok) {
                         const text = await response.text();
-                        throw new Error(text.substring(0, 200));
+                        throw new Error(`Error ${response.status}: ${text.substring(0, 100)}`);
                     }
                     return await response.json();
                 },
 
                 async refreshCounts() {
-                    const response = await fetch(`/pbx/sync-status/${this.pbxId}`, {
-                        headers: { 'Accept': 'application/json' }
-                    });
-                    if (!response.ok) return;
-                    const data = await response.json();
-                    this.extensionCount = data.extensionCount;
-                    this.callCount = data.callCount;
+                    try {
+                        const response = await fetch(this.urls.syncStatus, {
+                            headers: { 'Accept': 'application/json' }
+                        });
+                        if (!response.ok) return;
+                        const data = await response.json();
+                        this.extensionCount = data.extensionCount;
+                        this.callCount = data.callCount;
+                    } catch (e) { /* ignore */ }
                 },
 
                 async pollStatus() {
-                    const response = await fetch(`/pbx/sync-status/${this.pbxId}`, {
-                        headers: { 'Accept': 'application/json' }
-                    });
-                    if (!response.ok) return;
-                    const data = await response.json();
-                    
-                    this.currentMessage = data.message || 'Sincronizando...';
-                    this.extensionCount = data.extensionCount;
-                    this.callCount = data.callCount;
-                    
-                    if (data.isSyncing) {
-                        setTimeout(() => this.pollStatus(), 2000);
-                    } else {
-                        this.status = data.status;
-                        this.isSyncing = false;
-                        this.lastMessage = data.message;
-                    }
+                    try {
+                        const response = await fetch(this.urls.syncStatus, {
+                            headers: { 'Accept': 'application/json' }
+                        });
+                        if (!response.ok) return;
+                        const data = await response.json();
+                        
+                        this.currentMessage = data.message || 'Sincronizando...';
+                        this.extensionCount = data.extensionCount;
+                        this.callCount = data.callCount;
+                        
+                        if (data.isSyncing) {
+                            setTimeout(() => this.pollStatus(), 2000);
+                        } else {
+                            this.status = data.status;
+                            this.isSyncing = false;
+                            this.lastMessage = data.message;
+                        }
+                    } catch (e) { /* ignore */ }
                 },
 
                 resetSync() {
