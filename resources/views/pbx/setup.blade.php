@@ -379,9 +379,14 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         }
                     });
+                    if (!response.ok) {
+                        const text = await response.text();
+                        throw new Error(text.substring(0, 200));
+                    }
                     return await response.json();
                 },
 
@@ -390,10 +395,15 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         },
                         body: JSON.stringify({ year, month })
                     });
+                    if (!response.ok) {
+                        const text = await response.text();
+                        throw new Error(text.substring(0, 200));
+                    }
                     return await response.json();
                 },
 
@@ -402,21 +412,32 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
                             'X-CSRF-TOKEN': '{{ csrf_token() }}'
                         }
                     });
+                    if (!response.ok) {
+                        const text = await response.text();
+                        throw new Error(text.substring(0, 200));
+                    }
                     return await response.json();
                 },
 
                 async refreshCounts() {
-                    const response = await fetch(`/pbx/sync-status/${this.pbxId}`);
+                    const response = await fetch(`/pbx/sync-status/${this.pbxId}`, {
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    if (!response.ok) return;
                     const data = await response.json();
                     this.extensionCount = data.extensionCount;
                     this.callCount = data.callCount;
                 },
 
                 async pollStatus() {
-                    const response = await fetch(`/pbx/sync-status/${this.pbxId}`);
+                    const response = await fetch(`/pbx/sync-status/${this.pbxId}`, {
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    if (!response.ok) return;
                     const data = await response.json();
                     
                     this.currentMessage = data.message || 'Sincronizando...';
