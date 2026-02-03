@@ -19,7 +19,7 @@ class UserSeeder extends Seeder
             'name'     => config('services.admins.name'),
             'email'    => config('services.admins.email'),
             'password' => Hash::make(config('services.admins.pass')),
-            // 'role' => 'admin', // Descomentar si implementas roles a futuro
+            'role'     => 'admin', // ROL ADMIN - necesario para acceder a sincronización
         ]);
 
         // 2. Crear Usuario Trabajador
@@ -28,6 +28,7 @@ class UserSeeder extends Seeder
             'name'     => config('services.users.name'),
             'email'    => config('services.users.email'),
             'password' => Hash::make(config('services.users.pass')),
+            'role'     => 'user', // ROL USUARIO - acceso limitado
         ]);
     }
 }
