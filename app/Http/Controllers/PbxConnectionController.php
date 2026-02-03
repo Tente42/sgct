@@ -184,62 +184,64 @@ class PbxConnectionController extends Controller
 
             $pbx->update(['sync_message' => 'Obteniendo lista de extensiones...']);
 
-            // Obtener lista de extensiones
-            $listResponse = $this->connectApi('listAccount', [
-                'options' => 'extension,user_id',
-                'item_num' => 1000,
-                'sidx' => 'extension',
-                'sord' => 'asc'
-            ]);
+            // Usar listUser igual que ImportarExtensiones command
+            $listResponse = $this->connectApi('listUser', [], 60);
+            $responseBlock = $listResponse['response'] ?? [];
+            
+            // Extraer usuarios (manejar diferentes formatos de respuesta)
+            $users = $responseBlock['user'] ?? [];
+            if (empty($users)) {
+                foreach ($responseBlock as $value) {
+                    if (is_array($value) && !empty($value) && isset($value[0]['user_name'])) {
+                        $users = $value;
+                        break;
+                    }
+                }
+            }
 
-            $accounts = $listResponse['response']['account'] ?? 
-                        $listResponse['response']['body']['account'] ?? [];
-
-            if (empty($accounts)) {
+            if (empty($users)) {
                 $pbx->update(['sync_message' => 'No se encontraron extensiones en la central.']);
                 return response()->json(['success' => true, 'message' => 'Sin extensiones', 'count' => 0]);
             }
 
-            $total = count($accounts);
+            $total = count($users);
             $synced = 0;
 
-            foreach ($accounts as $account) {
-                $extensionNumber = $account['extension'] ?? null;
+            foreach ($users as $userData) {
+                $extensionNumber = $userData['user_name'] ?? null;
                 if (!$extensionNumber) continue;
 
                 $pbx->update(['sync_message' => "Sincronizando extensión {$extensionNumber} ({$synced}/{$total})..."]);
 
-                // Obtener datos completos de la extensión
-                $userInfo = $this->connectApi('getUser', ['user_name' => $extensionNumber]);
-                
-                $userData = $userInfo['response']['user_name'] 
-                         ?? $userInfo['response'][$extensionNumber] 
-                         ?? $userInfo['response'] 
-                         ?? [];
+                // Construir datos de extensión
+                $data = [
+                    'fullname' => $userData['fullname'] ?? $extensionNumber,
+                    'email' => $userData['email'] ?? null,
+                    'first_name' => $userData['first_name'] ?? null,
+                    'last_name' => $userData['last_name'] ?? null,
+                    'phone' => $userData['phone_number'] ?? null,
+                    'do_not_disturb' => false,
+                    'permission' => 'Internal',
+                    'max_contacts' => 1,
+                ];
 
-                // Obtener IP actual
-                $liveData = $this->connectApi('listAccount', [
-                    'options' => 'extension,addr',
-                    'item_num' => 1,
-                    'sidx' => 'extension',
-                    'sord' => 'asc'
-                ]);
+                // Obtener detalles SIP adicionales
+                try {
+                    $sipData = $this->connectApi('getSIPAccount', ['extension' => $extensionNumber], 10);
+                    if (($sipData['status'] ?? -1) == 0) {
+                        $details = $sipData['response']['extension'] 
+                            ?? $sipData['response']['sip_account'][0] 
+                            ?? $sipData['response']['sip_account'] 
+                            ?? [];
 
-                $ip = null;
-                $liveAccounts = $liveData['response']['account'] ?? [];
-                foreach ($liveAccounts as $live) {
-                    if (($live['extension'] ?? '') === $extensionNumber) {
-                        $ip = ($live['addr'] ?? null) !== '-' ? ($live['addr'] ?? null) : null;
-                        break;
+                        $data['do_not_disturb'] = ($details['dnd'] ?? 'no') === 'yes';
+                        $data['max_contacts'] = (int)($details['max_contacts'] ?? 1);
+                        $data['secret'] = $details['secret'] ?? null;
+                        $data['permission'] = $this->parseExtensionPermission($details['permission'] ?? 'internal');
                     }
+                } catch (\Exception $e) {
+                    // Ignorar errores de SIP, continuar con datos básicos
                 }
-
-                // Mapear permisos
-                $permission = 'Internal';
-                $permRaw = $userData['permission'] ?? '';
-                if (str_contains($permRaw, 'international')) $permission = 'International';
-                elseif (str_contains($permRaw, 'national')) $permission = 'National';
-                elseif (str_contains($permRaw, 'local')) $permission = 'Local';
 
                 // Guardar o actualizar extensión
                 Extension::withoutGlobalScope('current_pbx')->updateOrCreate(
@@ -247,18 +249,7 @@ class PbxConnectionController extends Controller
                         'pbx_connection_id' => $pbx->id,
                         'extension' => $extensionNumber
                     ],
-                    [
-                        'first_name' => $userData['first_name'] ?? null,
-                        'last_name' => $userData['last_name'] ?? null,
-                        'fullname' => trim(($userData['first_name'] ?? '') . ' ' . ($userData['last_name'] ?? '')) ?: null,
-                        'email' => $userData['email'] ?? null,
-                        'phone' => $userData['phone_number'] ?? null,
-                        'ip' => $ip,
-                        'permission' => $permission,
-                        'do_not_disturb' => ($userData['dnd'] ?? 'no') === 'yes',
-                        'max_contacts' => (int)($userData['max_contacts'] ?? 1),
-                        'secret' => $userData['secret'] ?? null,
-                    ]
+                    $data
                 );
 
                 $synced++;
@@ -279,6 +270,18 @@ class PbxConnectionController extends Controller
             ]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Parsear permiso de extensión al formato local
+     */
+    private function parseExtensionPermission(string $permission): string
+    {
+        $permission = strtolower($permission);
+        if (str_contains($permission, 'international')) return 'International';
+        if (str_contains($permission, 'national')) return 'National';
+        if (str_contains($permission, 'local')) return 'Local';
+        return 'Internal';
     }
 
     /**
@@ -327,38 +330,29 @@ class PbxConnectionController extends Controller
                 'minDur' => 0
             ], 180);
 
-            $cdrs = $response['cdr_root'] ?? [];
+            $cdrPackets = $response['cdr_root'] ?? [];
             $count = 0;
 
-            if (!empty($cdrs)) {
-                $pbx->update(['sync_message' => "Procesando " . count($cdrs) . " registros..."]);
+            if (!empty($cdrPackets)) {
+                $pbx->update(['sync_message' => "Procesando " . count($cdrPackets) . " paquetes CDR..."]);
 
-                foreach ($cdrs as $cdr) {
-                    $uniqueId = $cdr['AcctSessionId'] ?? ($cdr['src'] . '_' . $cdr['StartTime']);
+                foreach ($cdrPackets as $cdrPacket) {
+                    // Recolectar todos los segmentos del paquete (igual que SyncCalls command)
+                    $segments = $this->collectCdrSegments($cdrPacket);
+                    $segments = array_filter($segments, fn($s) => !empty($s['disposition']));
+
+                    if (empty($segments)) continue;
+
+                    // Consolidar segmentos en un registro de llamada
+                    $consolidated = $this->consolidateCallData(array_values($segments));
+                    if (empty($consolidated)) continue;
 
                     Call::withoutGlobalScope('current_pbx')->updateOrCreate(
                         [
                             'pbx_connection_id' => $pbx->id,
-                            'unique_id' => $uniqueId
+                            'unique_id' => $consolidated['unique_id']
                         ],
-                        [
-                            'source' => $cdr['src'] ?? 'unknown',
-                            'destination' => $cdr['dst'] ?? 'unknown',
-                            'caller_name' => $cdr['CallerIDName'] ?? null,
-                            'start_time' => $cdr['StartTime'] ?? now(),
-                            'duration' => (int)($cdr['Duration'] ?? 0),
-                            'billsec' => (int)($cdr['Billsec'] ?? 0),
-                            'disposition' => $cdr['Disposition'] ?? 'UNKNOWN',
-                            'call_type' => $this->determineCallType($cdr['dst'] ?? ''),
-                            // Nuevos campos detallados del CDR
-                            'action_type' => $cdr['action_type'] ?? null,
-                            'answer_time' => $cdr['AnswerTime'] ?? null,
-                            'dstanswer' => $cdr['dstanswer'] ?? null,
-                            'lastapp' => $cdr['lastapp'] ?? null,
-                            'channel' => $cdr['channel'] ?? null,
-                            'dst_channel' => $cdr['dstchannel'] ?? null,
-                            'src_trunk_name' => $cdr['src_trunk_name'] ?? null,
-                        ]
+                        $consolidated
                     );
                     $count++;
                 }
@@ -377,6 +371,145 @@ class PbxConnectionController extends Controller
             $pbx->update(['sync_message' => 'Error: ' . $e->getMessage()]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Recolectar todos los segmentos de un paquete CDR recursivamente
+     */
+    private function collectCdrSegments(array $node): array
+    {
+        $collected = [];
+
+        // Si este nodo tiene 'start', es un segmento válido
+        if (isset($node['start']) && !empty($node['start'])) {
+            $collected[] = $node;
+        }
+
+        // Buscar sub_cdr anidados
+        foreach ($node as $key => $value) {
+            if (is_array($value) && (str_starts_with($key, 'sub_cdr') || $key === 'main_cdr')) {
+                $collected = array_merge($collected, $this->collectCdrSegments($value));
+            }
+        }
+
+        return $collected;
+    }
+
+    /**
+     * Consolidar segmentos en un solo registro de llamada
+     */
+    private function consolidateCallData(array $segments): array
+    {
+        if (empty($segments)) return [];
+
+        $first = $segments[0];
+        $firstSrc = $first['src'] ?? '';
+        $firstDst = $first['dst'] ?? '';
+
+        // Determinar tipo de llamada
+        $esEntrante = $this->esExterno($firstSrc) && $this->esAnexo($firstDst);
+
+        $data = [
+            'unique_id' => null,
+            'start_time' => null,
+            'answer_time' => null,
+            'source' => null,
+            'destination' => null,
+            'dstanswer' => null,
+            'duration' => 0,
+            'billsec' => 0,
+            'disposition' => 'NO ANSWER',
+            'action_type' => null,
+            'lastapp' => null,
+            'channel' => null,
+            'dst_channel' => null,
+            'src_trunk_name' => null,
+            'caller_name' => null,
+            'call_type' => $esEntrante ? 'inbound' : 'outbound',
+        ];
+
+        foreach ($segments as $seg) {
+            $src = $seg['src'] ?? '';
+            $dst = $seg['dst'] ?? '';
+
+            // Capturar datos más tempranos/relevantes
+            if (!$data['start_time'] || ($seg['start'] ?? '') < $data['start_time']) {
+                $data['start_time'] = $seg['start'] ?? null;
+            }
+            $data['unique_id'] ??= $seg['acctid'] ?? $seg['uniqueid'] ?? null;
+            $data['caller_name'] ??= $seg['caller_name'] ?? null;
+
+            // Campos detallados
+            $data['action_type'] ??= $seg['action_type'] ?? null;
+            $data['lastapp'] ??= $seg['lastapp'] ?? null;
+            $data['channel'] ??= $seg['channel'] ?? null;
+            $data['dst_channel'] ??= $seg['dstchannel'] ?? null;
+            $data['src_trunk_name'] ??= $seg['src_trunk_name'] ?? null;
+            
+            // Capturar answer_time si existe
+            if (!empty($seg['answer']) && $seg['answer'] !== '0000-00-00 00:00:00') {
+                $data['answer_time'] ??= $seg['answer'];
+            }
+            
+            // Capturar dstanswer
+            if (!empty($seg['dstanswer'])) {
+                $data['dstanswer'] ??= $seg['dstanswer'];
+            }
+
+            // Sumar tiempos
+            $data['duration'] += (int)($seg['duration'] ?? 0);
+            $data['billsec'] += (int)($seg['billsec'] ?? 0);
+
+            // Determinar origen/destino según tipo
+            if ($esEntrante) {
+                $data['source'] ??= $this->esAnexo($dst) ? $dst : null;
+                $data['destination'] ??= $this->esExterno($src) ? $src : null;
+            } else {
+                $data['source'] ??= $this->esAnexo($src) ? $src : null;
+                $data['destination'] ??= $dst ?: null;
+            }
+
+            // Si hay billsec > 0, fue contestada
+            if ((int)($seg['billsec'] ?? 0) > 0) {
+                $data['disposition'] = 'ANSWERED';
+            }
+        }
+
+        // Valores por defecto
+        $data['source'] ??= $firstSrc ?: 'Desconocido';
+        $data['destination'] ??= $firstDst ?: 'Desconocido';
+        $data['unique_id'] ??= md5($data['start_time'] . $data['source'] . $data['destination']);
+
+        // Determinar disposition si no fue ANSWERED
+        if ($data['disposition'] !== 'ANSWERED') {
+            foreach ($segments as $seg) {
+                $disp = strtoupper($seg['disposition'] ?? '');
+                if (str_contains($disp, 'BUSY')) {
+                    $data['disposition'] = 'BUSY';
+                    break;
+                } elseif (str_contains($disp, 'FAILED')) {
+                    $data['disposition'] = 'FAILED';
+                }
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Verificar si es un anexo/extensión interno (3-4 dígitos)
+     */
+    private function esAnexo(string $num): bool
+    {
+        return preg_match('/^\d{3,4}$/', $num) === 1;
+    }
+
+    /**
+     * Verificar si es número externo
+     */
+    private function esExterno(string $num): bool
+    {
+        return strlen($num) > 4 || str_starts_with($num, '+') || str_starts_with($num, '9');
     }
 
     /**
