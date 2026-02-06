@@ -7,6 +7,7 @@ use App\Http\Controllers\SettingController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\PbxConnectionController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\StatsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -92,5 +93,14 @@ Route::middleware(['auth', 'pbx.selected'])->group(function () {
     Route::post('/extension/update', [ExtensionController::class, 'update'])->name('extension.update');
     Route::post('/extension/update-ips', [ExtensionController::class, 'updateIps'])->name('extension.updateIps');
     Route::post('/tarifas', [SettingController::class, 'update'])->name('settings.update');
+
+    // Desvíos de llamadas (Call Forwarding)
+    Route::get('/extension/forwarding', [ExtensionController::class, 'getCallForwarding'])->name('extension.forwarding.get');
+    Route::post('/extension/forwarding', [ExtensionController::class, 'updateCallForwarding'])->name('extension.forwarding.update');
+
+    // Estadísticas y KPIs
+    Route::get('/stats/kpi-turnos', [StatsController::class, 'index'])->name('stats.kpi-turnos');
+    Route::get('/stats/kpi-turnos/api', [StatsController::class, 'apiKpis'])->name('stats.kpi-turnos.api');
+    Route::post('/stats/kpi-turnos/sync', [StatsController::class, 'sincronizarColas'])->name('stats.sync-colas');
 
 });

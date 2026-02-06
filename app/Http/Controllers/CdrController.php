@@ -191,8 +191,6 @@ class CdrController extends Controller
             ->orderBy('fecha')
             ->get();
 
-        $systemData = app(EstadoCentral::class)->getSystemData();
-
         return view('graficos', [
             'pieChartLabels' => $callsByDisposition->keys(),
             'pieChartData' => $callsByDisposition->values(),
@@ -201,7 +199,6 @@ class CdrController extends Controller
             'fechaInicio' => $fechaInicio,
             'fechaFin' => $fechaFin,
             'anexo' => $anexo,
-            'systemData' => $systemData,
         ]);
     }
 

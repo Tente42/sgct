@@ -26,7 +26,12 @@ class TestApiCommands extends Command
                             {--outgoing : Solo mostrar llamadas salientes}
                             {--agent= : Número de agente para queueapi (usa * para todos)}
                             {--stats-type=overview : Tipo de estadísticas: overview, calldetail, loginhistory, pausedhistory}
-                            {--today : Usar solo la fecha de hoy para queueapi}';
+                            {--today : Usar solo la fecha de hoy para queueapi}
+                            {--presence= : Estado de presencia para updateSIPAccount (available, away, dnd, unavailable, etc.)}
+                            {--cfb= : Número para Call Forward Busy}
+                            {--cfn= : Número para Call Forward No Answer}
+                            {--cfu= : Número para Call Forward Unconditional}
+                            {--cf-dest-type=1 : Tipo de destino (1=Extension, 2=Custom, 3=Voicemail, 5=Queue)}';
     
     protected $description = 'Comando para probar llamados a la API de Grandstream';
 
@@ -57,6 +62,7 @@ class TestApiCommands extends Command
             $this->info("  - getInboundRoute");
             $this->info("  - getOutboundRoute");
             $this->info("  - getSIPAccount");
+            $this->info("  - updateSIPAccount");
             $this->info("  - queueapi");
             $this->info("  - cdrapi");
             $this->info("  - kpi-turnos");
@@ -64,12 +70,14 @@ class TestApiCommands extends Command
             $this->newLine();
             $this->info("Ejemplos de uso:");
             $this->info("  php artisan api:test --pbx=1 --action=listExtensionGroup");
+            $this->info("  php artisan api:test --pbx=1 --action=listQueue");
             $this->info("  php artisan api:test --pbx=1 --action=cdrapi --caller=4445 --days=30 --all-calls");
             $this->info("  php artisan api:test --pbx=1 --action=cdrapi --caller=4445 --incoming --days=7");
             $this->info("  php artisan api:test --pbx=1 --action=queueapi --today --queue=6500");
-            $this->info("  php artisan api:test --pbx=1 --action=queueapi --start-time=2026-02-01 --end-time=2026-02-02");
+            $this->info("  php artisan api:test --pbx=1 --action=queueapi --start-time=2026-02-03 --end-time=2026-02-04 --queue=6500");
             $this->info("  php artisan api:test --pbx=1 --action=kpi-turnos --today --queue=6500");
             $this->info("  php artisan api:test --pbx=1 --action=explore-action-types");
+            $this->info("  php artisan api:test --pbx=1 --action=updateSIPAccount --extension=4444  (modo interactivo)");
             return 0;
         }
 
@@ -92,6 +100,8 @@ class TestApiCommands extends Command
                 return $this->testGetOutboundRoute();
             case 'getSIPAccount':
                 return $this->testGetSIPAccount();
+            case 'updateSIPAccount':
+                return $this->testUpdateSIPAccount();
             case 'queueapi':
                 return $this->testQueueApi();
             case 'cdrapi':
@@ -1872,6 +1882,345 @@ class TestApiCommands extends Command
     }
 
     /**
+     * Probar updateSIPAccount - Actualizar configuración de presencia y call forwarding (INTERACTIVO)
+     */
+    private function testUpdateSIPAccount(): int
+    {
+        $extension = $this->option('extension');
+        
+        if (!$extension) {
+            $extension = $this->ask('📞 Ingresa el número de extensión a modificar');
+            if (!$extension) {
+                $this->error("❌ Debes especificar una extensión.");
+                return 1;
+            }
+        }
+
+        $this->info("🔧 Configuración interactiva de desvíos para extensión {$extension}");
+        $this->newLine();
+
+        // ==================== PASO 1: OBTENER CONFIGURACIÓN ACTUAL ====================
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📋 PASO 1: Obteniendo configuración actual...</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+
+        $currentResponse = $this->connectApi('getSIPAccount', [
+            'extension' => $extension
+        ]);
+
+        if (($currentResponse['status'] ?? -1) !== 0) {
+            $this->error("❌ Error al obtener la extensión: " . json_encode($currentResponse));
+            return 1;
+        }
+
+        $currentData = $currentResponse['response'] ?? [];
+        $currentPresence = $currentData['presence_status'] ?? 'available';
+        $currentPresenceSettings = $currentData['sip_presence_settings'] ?? [];
+        
+        $this->info("✅ Configuración actual obtenida.");
+        $this->line("<fg=white>📊 Estado de presencia actual: <fg=green;options=bold>{$currentPresence}</></>");
+        $this->newLine();
+
+        // Mostrar configuración actual del estado de presencia actual
+        $this->line("<fg=gray>Configuración actual de desvíos (estado {$currentPresence}):</>");
+        foreach ($currentPresenceSettings as $pres) {
+            if (($pres['presence_status'] ?? '') === $currentPresence) {
+                $cfbVal = $pres['cfb'] ?? '(no configurado)';
+                $cfnVal = $pres['cfn'] ?? '(no configurado)';
+                $cfuVal = $pres['cfu'] ?? '(no configurado)';
+                $cfbType = $pres['cfb_destination_type'] ?? '0';
+                $cfnType = $pres['cfn_destination_type'] ?? '0';
+                $cfuType = $pres['cfu_destination_type'] ?? '0';
+                $this->line("  <fg=white>• CFB (Ocupado):</> {$cfbVal} ({$this->getDestinationTypeLabel($cfbType)})");
+                $this->line("  <fg=white>• CFN (No Responde):</> {$cfnVal} ({$this->getDestinationTypeLabel($cfnType)})");
+                $this->line("  <fg=white>• CFU (Incondicional):</> {$cfuVal} ({$this->getDestinationTypeLabel($cfuType)})");
+                break;
+            }
+        }
+        $this->newLine();
+
+        // ==================== PASO 2: MODO INTERACTIVO MÚLTIPLE ====================
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📋 PASO 2: Configuración interactiva (puedes configurar múltiples desvíos)</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        
+        $configurados = [];
+        
+        // Definir opciones de tipos de desvío
+        $forwardTypes = [
+            'cfb' => 'CFB - Call Forward Busy (cuando está ocupado)',
+            'cfn' => 'CFN - Call Forward No Answer (cuando no contesta)',
+            'cfu' => 'CFU - Call Forward Unconditional (siempre desviar)',
+        ];
+
+        // Preguntar timetype UNA sola vez para todos
+        $timeTypeChoices = [
+            '0' => 'Todo el tiempo',
+            '1' => 'Horario de oficina',
+            '2' => 'Fuera de horario de oficina',
+            '3' => 'Feriados',
+            '4' => 'Fines de semana',
+        ];
+
+        $timeTypeSelected = $this->choice(
+            '¿Cuándo deben aplicarse los desvíos?',
+            $timeTypeChoices,
+            '0'
+        );
+        $timeType = array_search($timeTypeSelected, $timeTypeChoices) ?: '0';
+        $this->newLine();
+
+        // Obtener colas disponibles para mostrar como opciones
+        $queuesResponse = $this->connectApi('listQueue', [
+            'options' => 'extension,queue_name',
+            'sidx' => 'extension',
+            'sord' => 'asc'
+        ]);
+        
+        $availableQueues = [];
+        if (($queuesResponse['status'] ?? -1) === 0) {
+            $queues = $queuesResponse['response']['queue'] ?? [];
+            foreach ($queues as $queue) {
+                $queueExt = $queue['extension'] ?? '';
+                $queueName = $queue['queue_name'] ?? '';
+                if ($queueExt) {
+                    $availableQueues[$queueExt] = "{$queueExt} - {$queueName}";
+                }
+            }
+        }
+        
+        $hasQueues = !empty($availableQueues);
+        if ($hasQueues) {
+            $this->info("📞 Se encontraron " . count($availableQueues) . " colas disponibles.");
+        } else {
+            $this->warn("⚠️ No se pudieron obtener las colas de la PBX.");
+        }
+        $this->newLine();
+
+        // Tipos de destino disponibles
+        $destTypeChoices = [
+            'extension' => '📱 Extensión (escribir número)',
+            'queue' => '📞 Cola (seleccionar de lista)',
+            'custom' => '📲 Número personalizado (celular/externo)',
+        ];
+
+        // Loop para configurar cada tipo de desvío
+        foreach ($forwardTypes as $type => $label) {
+            $typeLabel = match($type) {
+                'cfb' => 'CFB (Ocupado)',
+                'cfn' => 'CFN (No Responde)',
+                'cfu' => 'CFU (Incondicional)',
+                default => $type
+            };
+
+            if ($this->confirm("¿Deseas configurar {$typeLabel}?", false)) {
+                // Preguntar tipo de destino
+                $destTypeSelected = $this->choice(
+                    "¿Qué tipo de destino para {$typeLabel}?",
+                    array_values($destTypeChoices),
+                    0
+                );
+                $destType = array_search($destTypeSelected, $destTypeChoices) ?: 'extension';
+                
+                $destination = null;
+                $destDescription = '';
+                $apiDestType = null; // 1=Extension, 2=Custom, 5=Queue
+                
+                switch ($destType) {
+                    case 'queue':
+                        if ($hasQueues) {
+                            $queueSelected = $this->choice(
+                                "📞 Selecciona la cola para {$typeLabel}:",
+                                array_values($availableQueues),
+                                0
+                            );
+                            // Obtener el número de extensión de la cola
+                            $destination = array_search($queueSelected, $availableQueues);
+                            $destDescription = "Cola: {$queueSelected}";
+                            $apiDestType = 5; // Queue
+                        } else {
+                            $this->warn("⚠️ No hay colas disponibles. Escribe el número manualmente:");
+                            $destination = $this->ask("📞 Número de la cola");
+                            $destDescription = "Cola: {$destination}";
+                            $apiDestType = 5; // Queue
+                        }
+                        break;
+                        
+                    case 'extension':
+                        $destination = $this->ask("📱 Número de extensión para {$typeLabel} (ej: 4445, 2000)");
+                        $destDescription = "Extensión: {$destination}";
+                        $apiDestType = 1; // Extension
+                        break;
+                        
+                    case 'custom':
+                        $destination = $this->ask("📲 Número externo/celular para {$typeLabel} (ej: 951389199)");
+                        $destDescription = "Número personalizado: {$destination}";
+                        $apiDestType = 2; // Custom Number
+                        break;
+                }
+                
+                if ($destination) {
+                    // NO enviamos destination_type - la PBX lo auto-detecta
+                    // Pero guardamos la info para mostrar al usuario
+                    $configurados[$type] = [
+                        'dest' => $destination,
+                        'desc' => $destDescription,
+                        'expectedType' => $apiDestType,
+                        'typeName' => $destType,
+                        'timetype' => $timeType
+                    ];
+                    $this->info("  ✅ {$typeLabel} → {$destDescription}");
+                } else {
+                    $this->warn("  ⚠️ {$typeLabel} no configurado (sin destino)");
+                }
+                $this->newLine();
+            }
+        }
+
+        // Verificar que al menos uno fue configurado
+        if (empty($configurados)) {
+            $this->warn("⚠️ No se configuró ningún desvío.");
+            return 1;
+        }
+
+        // ==================== PASO 3: PREPARAR Y MOSTRAR DATOS ====================
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📋 PASO 3: Resumen de configuración...</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+
+        $this->info("📤 Configuración que se enviará (cada desvío por separado):");
+        $this->line("<fg=cyan>Extensión:</> <fg=yellow;options=bold>{$extension}</>");
+        $this->line("<fg=cyan>Horario:</> <fg=yellow;options=bold>{$timeTypeChoices[$timeType]}</>");
+        $this->newLine();
+        
+        foreach ($configurados as $type => $config) {
+            $typeLabel = match($type) {
+                'cfb' => 'CFB (Ocupado)',
+                'cfn' => 'CFN (No Responde)',
+                'cfu' => 'CFU (Incondicional)',
+                default => $type
+            };
+            $this->line("  <fg=green>✓</> <fg=white>{$typeLabel}:</> <fg=cyan;options=bold>{$config['desc']}</>");
+        }
+        
+        $this->newLine();
+        $this->line("<fg=yellow>💡 NOTA:</> Se enviarán por separado para que la PBX auto-detecte el tipo de destino.");
+        $this->newLine();
+
+        // Confirmar antes de enviar
+        if (!$this->confirm('¿Deseas enviar esta configuración a la API?', true)) {
+            $this->warn("❌ Operación cancelada por el usuario.");
+            return 0;
+        }
+
+        // ==================== PASO 4: ENVIAR ACTUALIZACIÓN (uno por uno) ====================
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📋 PASO 4: Enviando actualizaciones a la API (uno por uno)...</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+
+        $allSuccess = true;
+        foreach ($configurados as $type => $config) {
+            $typeLabel = match($type) {
+                'cfb' => 'CFB (Ocupado)',
+                'cfn' => 'CFN (No Responde)',
+                'cfu' => 'CFU (Incondicional)',
+                default => $type
+            };
+            
+            $this->line("\n<fg=cyan>→ Configurando {$typeLabel}...</>");
+            
+            $singleUpdate = [
+                'extension' => $extension,
+                $type => $config['dest'],
+                $type . '_timetype' => $config['timetype']
+            ];
+            
+            $this->line("<fg=gray>  Request: " . json_encode($singleUpdate) . "</>");
+            
+            $response = $this->connectApi('updateSIPAccount', $singleUpdate);
+            
+            if (($response['status'] ?? -1) !== 0) {
+                $this->error("  ❌ Error en {$typeLabel}: " . json_encode($response));
+                $allSuccess = false;
+            } else {
+                $this->info("  ✅ {$typeLabel} actualizado");
+                
+                // Aplicar cambios inmediatamente
+                $this->line("<fg=gray>  Aplicando cambios...</>");
+                $this->connectApi('applyChanges', [], 30);
+                sleep(1); // Pequeña pausa para que la PBX procese
+            }
+        }
+        
+        if (!$allSuccess) {
+            $this->error("❌ Algunos desvíos no pudieron ser configurados");
+        }
+        
+        $this->newLine();
+
+        // ==================== PASO 5: VERIFICAR CAMBIOS ====================
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📋 PASO 5: Verificando cambios...</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+
+        $verifyResponse = $this->connectApi('getSIPAccount', [
+            'extension' => $extension
+        ]);
+
+        if (($verifyResponse['status'] ?? -1) === 0) {
+            $updatedPresence = $verifyResponse['response']['sip_presence_settings'] ?? [];
+            
+            $this->info("✅ Configuración actualizada verificada:");
+            foreach ($updatedPresence as $pres) {
+                $status = $pres['presence_status'] ?? 'N/A';
+                $statusLabel = match($status) {
+                    'available' => '🟢 Disponible',
+                    'away' => '🟡 Ausente',
+                    'chat' => '💬 Chat',
+                    'dnd' => '🔴 No Molestar',
+                    'unavailable' => '⚫ No Disponible',
+                    'userdef' => '⚙️ Personalizado',
+                    default => $status
+                };
+                
+                $this->newLine();
+                $this->line("  <fg=cyan;options=bold>{$statusLabel}</>");
+                $this->line("  " . str_repeat("─", 60));
+                
+                $cfuVal = $pres['cfu'] ?? null;
+                $cfbVal = $pres['cfb'] ?? null;
+                $cfnVal = $pres['cfn'] ?? null;
+                
+                if ($cfuVal) {
+                    $cfuType = $pres['cfu_destination_type'] ?? '0';
+                    $cfuTime = (int)($pres['cfu_timetype'] ?? 0);
+                    $this->line("  <fg=white>  • CFU (Incondicional):</> <fg=green>{$cfuVal}</> ({$this->getDestinationTypeLabel($cfuType)}) - {$this->getTimeModeLabel($cfuTime)}");
+                }
+                if ($cfbVal) {
+                    $cfbType = $pres['cfb_destination_type'] ?? '0';
+                    $cfbTime = (int)($pres['cfb_timetype'] ?? 0);
+                    $this->line("  <fg=white>  • CFB (Ocupado):</> <fg=yellow>{$cfbVal}</> ({$this->getDestinationTypeLabel($cfbType)}) - {$this->getTimeModeLabel($cfbTime)}");
+                }
+                if ($cfnVal) {
+                    $cfnType = $pres['cfn_destination_type'] ?? '0';
+                    $cfnTime = (int)($pres['cfn_timetype'] ?? 0);
+                    $this->line("  <fg=white>  • CFN (No Responde):</> <fg=cyan>{$cfnVal}</> ({$this->getDestinationTypeLabel($cfnType)}) - {$this->getTimeModeLabel($cfnTime)}");
+                }
+                
+                if (!$cfuVal && !$cfbVal && !$cfnVal) {
+                    $this->line("  <fg=gray>  Sin desvíos configurados</>");
+                }
+            }
+        }
+
+        $this->newLine();
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->info("✅ Comando ejecutado exitosamente.");
+        
+        return 0;
+    }
+
+    /**
      * Obtener etiqueta legible para modo de tiempo
      */
     private function getTimeModeLabel(int $mode): string
@@ -1992,16 +2341,17 @@ class TestApiCommands extends Command
             ];
             
             foreach ($response['queue_statistics'] as $queueStat) {
+                // Extraer el total si existe
+                if (isset($queueStat['total'])) {
+                    $data['total'] = $queueStat['total'];
+                }
+                // Extraer las colas
                 if (isset($queueStat['queue'])) {
                     $data['queue'][] = $queueStat['queue'];
                 }
+                // Extraer los agentes (cada elemento tiene un objeto agent, no un array)
                 if (isset($queueStat['agent'])) {
-                    // Puede ser un array de agentes o un solo agente
-                    if (is_array($queueStat['agent'])) {
-                        $data['agent'] = array_merge($data['agent'], $queueStat['agent']);
-                    } else {
-                        $data['agent'][] = $queueStat['agent'];
-                    }
+                    $data['agent'][] = $queueStat['agent'];
                 }
             }
         } else {
