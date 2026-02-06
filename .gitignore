@@ -22,6 +22,8 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+ANALISIS_QUEUEAPI.md
+ESTRUCTURA_QUEUEAPI.md
 
 # Documentation files (may contain sensitive API info)
 *.pdf

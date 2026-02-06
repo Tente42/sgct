@@ -209,4 +209,184 @@ class ExtensionController extends Controller
 
         return view('configuracion', compact('extensions', 'anexo'));
     }
+
+    /**
+     * Obtener configuración de desvíos de llamadas de una extensión
+     */
+    public function getCallForwarding(Request $request)
+    {
+        $request->validate([
+            'extension' => 'required|string'
+        ]);
+
+        // Verificar conexión
+        if (!$this->testConnection()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se pudo conectar con la Central Telefónica.'
+            ], 503);
+        }
+
+        // Obtener configuración actual de la extensión
+        $response = $this->connectApi('getSIPAccount', [
+            'extension' => $request->extension
+        ]);
+
+        if (($response['status'] ?? -1) !== 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener datos de la extensión.'
+            ], 500);
+        }
+
+        $presenceSettings = $response['response']['sip_presence_settings'] ?? [];
+        $currentPresence = $response['response']['presence_status'] ?? 'available';
+
+        // Buscar la configuración del estado de presencia actual
+        $currentConfig = [
+            'cfb' => '',
+            'cfb_destination_type' => '0',
+            'cfb_timetype' => '0',
+            'cfn' => '',
+            'cfn_destination_type' => '0',
+            'cfn_timetype' => '0',
+            'cfu' => '',
+            'cfu_destination_type' => '0',
+            'cfu_timetype' => '0',
+        ];
+
+        foreach ($presenceSettings as $setting) {
+            if (($setting['presence_status'] ?? '') === $currentPresence) {
+                $currentConfig = array_merge($currentConfig, [
+                    'cfb' => $setting['cfb'] ?? '',
+                    'cfb_destination_type' => $setting['cfb_destination_type'] ?? '0',
+                    'cfb_timetype' => $setting['cfb_timetype'] ?? '0',
+                    'cfn' => $setting['cfn'] ?? '',
+                    'cfn_destination_type' => $setting['cfn_destination_type'] ?? '0',
+                    'cfn_timetype' => $setting['cfn_timetype'] ?? '0',
+                    'cfu' => $setting['cfu'] ?? '',
+                    'cfu_destination_type' => $setting['cfu_destination_type'] ?? '0',
+                    'cfu_timetype' => $setting['cfu_timetype'] ?? '0',
+                ]);
+                break;
+            }
+        }
+
+        // Obtener colas disponibles
+        $queuesResponse = $this->connectApi('listQueue', [
+            'options' => 'extension,queue_name',
+            'sidx' => 'extension',
+            'sord' => 'asc'
+        ]);
+
+        $queues = [];
+        if (($queuesResponse['status'] ?? -1) === 0) {
+            foreach ($queuesResponse['response']['queue'] ?? [] as $queue) {
+                $queues[] = [
+                    'extension' => $queue['extension'] ?? '',
+                    'name' => $queue['queue_name'] ?? ''
+                ];
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'extension' => $request->extension,
+            'presence_status' => $currentPresence,
+            'forwarding' => $currentConfig,
+            'queues' => $queues
+        ]);
+    }
+
+    /**
+     * Actualizar configuración de desvíos de llamadas
+     * IMPORTANTE: Se debe enviar cada desvío por separado con applyChanges después de cada uno
+     * para que la PBX auto-detecte correctamente el tipo de destino.
+     */
+    public function updateCallForwarding(Request $request)
+    {
+        // Verificar permiso
+        if (!auth()->user()->canEditExtensions()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes permiso para editar anexos.'
+            ], 403);
+        }
+
+        $request->validate([
+            'extension' => 'required|string',
+            'timetype' => 'required|in:0,1,2,3,4',
+            'forwards' => 'required|array',
+            'forwards.*.type' => 'required|in:cfb,cfn,cfu',
+            'forwards.*.dest_type' => 'required|in:none,extension,queue,custom',
+            'forwards.*.destination' => 'nullable|string'
+        ]);
+
+        // Verificar conexión
+        if (!$this->testConnection()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se pudo conectar con la Central Telefónica.'
+            ], 503);
+        }
+
+        $extension = $request->extension;
+        $timetype = $request->timetype;
+        $forwards = $request->forwards;
+
+        $errors = [];
+        $success = [];
+
+        // Procesar cada desvío por separado (IMPORTANTE para auto-detección de tipo)
+        foreach ($forwards as $forward) {
+            $type = $forward['type']; // cfb, cfn, cfu
+            $destType = $forward['dest_type']; // none, extension, queue, custom
+            $destination = trim($forward['destination'] ?? '');
+
+            // Si es "none", limpiar el desvío
+            if ($destType === 'none') {
+                $destination = '';
+            }
+
+            // Validar que si no es "none", tenga destino
+            if ($destType !== 'none' && empty($destination)) {
+                $errors[] = strtoupper($type) . ': Debes especificar un destino.';
+                continue;
+            }
+
+            // Preparar datos para la API (sin destination_type - la PBX lo auto-detecta)
+            $updateData = [
+                'extension' => $extension,
+                $type => $destination,
+                $type . '_timetype' => $timetype
+            ];
+
+            // Enviar actualización
+            $response = $this->connectApi('updateSIPAccount', $updateData);
+
+            if (($response['status'] ?? -1) !== 0) {
+                $errors[] = strtoupper($type) . ': Error al actualizar.';
+                continue;
+            }
+
+            // Aplicar cambios después de cada desvío (IMPORTANTE)
+            $this->connectApi('applyChanges', [], 30);
+            usleep(500000); // 0.5 segundos de pausa
+
+            $success[] = strtoupper($type);
+        }
+
+        if (!empty($errors) && empty($success)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar desvíos: ' . implode(' | ', $errors)
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Desvíos actualizados: ' . implode(', ', $success),
+            'warnings' => $errors
+        ]);
+    }
 }

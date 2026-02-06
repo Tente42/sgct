@@ -1,9 +1,19 @@
-<x-app-layout>
-    <x-slot name="header">
+<?php if (isset($component)) { $__componentOriginal9ac128a9029c0e4701924bd2d73d7f54 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54 = $attributes; } ?>
+<?php $component = App\View\Components\AppLayout::resolve([] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('app-layout'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\App\View\Components\AppLayout::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes([]); ?>
+     <?php $__env->slot('header', null, []); ?> 
         <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-            {{ __('Configuración de Anexos') }}
+            <?php echo e(__('Configuración de Anexos')); ?>
+
         </h2>
-    </x-slot>
+     <?php $__env->endSlot(); ?>
 
     <div class="w-full px-4 sm:px-6 lg:px-8 py-6" x-data="extensionEditor()">
 
@@ -11,34 +21,34 @@
             <div class="flex items-center gap-4">
                 <div>
                     <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-cog me-2"></i>Gestión de Anexos</h3>
-                    <span class="text-gray-500 text-sm">Total de anexos: {{ $extensions->total() }}</span>
+                    <span class="text-gray-500 text-sm">Total de anexos: <?php echo e($extensions->total()); ?></span>
                 </div>
-                @if(Auth::user()->canUpdateIps())
-                <form method="POST" action="{{ route('extension.updateIps') }}" class="inline">
-                    @csrf
+                <?php if(Auth::user()->canUpdateIps()): ?>
+                <form method="POST" action="<?php echo e(route('extension.updateIps')); ?>" class="inline">
+                    <?php echo csrf_field(); ?>
                     <button type="submit" 
                             class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-blue-600 text-white font-semibold hover:bg-blue-700 shadow-sm transition-colors">
                         <i class="fas fa-sync-alt"></i>
                         <span>Actualizar IPs</span>
                     </button>
                 </form>
-                @endif
+                <?php endif; ?>
             </div>
         </div>
 
-        @if(session('success'))
+        <?php if(session('success')): ?>
             <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">
                 <strong class="font-bold">Éxito!</strong>
-                <span class="block sm:inline">{{ session('success') }}</span>
+                <span class="block sm:inline"><?php echo e(session('success')); ?></span>
             </div>
-        @endif
+        <?php endif; ?>
 
-        @if(session('error'))
+        <?php if(session('error')): ?>
             <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
                 <strong class="font-bold">Error!</strong>
-                <span class="block sm:inline">{{ session('error') }}</span>
+                <span class="block sm:inline"><?php echo e(session('error')); ?></span>
             </div>
-        @endif
+        <?php endif; ?>
 
         <div class="bg-white shadow border-0">
             <div class="border-b py-3 px-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -47,14 +57,14 @@
                     <span>Listado de Anexos</span>
                 </h5>
 
-                <form action="{{ route('extension.index') }}" method="GET" class="w-full md:w-auto flex items-center gap-2">
+                <form action="<?php echo e(route('extension.index')); ?>" method="GET" class="w-full md:w-auto flex items-center gap-2">
                     <label for="anexo" class="sr-only">Buscar anexo</label>
                     <div class="flex w-full md:w-64">
                         <span class="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm"><i class="fas fa-phone"></i></span>
-                        <input type="text" id="anexo" name="anexo" value="{{ $anexo ?? '' }}" placeholder="Buscar anexo" class="flex-1 block w-full rounded-none rounded-r-md border-gray-300 shadow-sm" />
+                        <input type="text" id="anexo" name="anexo" value="<?php echo e($anexo ?? ''); ?>" placeholder="Buscar anexo" class="flex-1 block w-full rounded-none rounded-r-md border-gray-300 shadow-sm" />
                     </div>
                     <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">Filtrar</button>
-                    <a href="{{ route('extension.index') }}" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded" title="Limpiar">Limpiar</a>
+                    <a href="<?php echo e(route('extension.index')); ?>" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded" title="Limpiar">Limpiar</a>
                 </form>
             </div>
             
@@ -75,81 +85,94 @@
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
-                        @forelse($extensions as $extension)
+                        <?php $__empty_1 = true; $__currentLoopData = $extensions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $extension): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
                         <tr class="hover:bg-gray-50">
                             <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                                {{ $extension->extension }}
+                                <?php echo e($extension->extension); ?>
+
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                {{ $extension->first_name ?? '-' }}
+                                <?php echo e($extension->first_name ?? '-'); ?>
+
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                {{ $extension->last_name ?? '-' }}
+                                <?php echo e($extension->last_name ?? '-'); ?>
+
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                {{ $extension->email ?? '-' }}
+                                <?php echo e($extension->email ?? '-'); ?>
+
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                {{ $extension->phone ?? '-' }}
+                                <?php echo e($extension->phone ?? '-'); ?>
+
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                <span class="font-mono {{ $extension->ip ? 'text-green-600' : 'text-gray-400' }}">
-                                    {{ $extension->ip ?? '---' }}
+                                <span class="font-mono <?php echo e($extension->ip ? 'text-green-600' : 'text-gray-400'); ?>">
+                                    <?php echo e($extension->ip ?? '---'); ?>
+
                                 </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm">
                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                                    {{ $extension->permission === 'International' ? 'bg-purple-100 text-purple-800' : '' }}
-                                    {{ $extension->permission === 'National' ? 'bg-blue-100 text-blue-800' : '' }}
-                                    {{ $extension->permission === 'Local' ? 'bg-green-100 text-green-800' : '' }}
-                                    {{ $extension->permission === 'Internal' ? 'bg-gray-100 text-gray-800' : '' }}">
-                                    {{ $extension->permission ?? 'Internal' }}
+                                    <?php echo e($extension->permission === 'International' ? 'bg-purple-100 text-purple-800' : ''); ?>
+
+                                    <?php echo e($extension->permission === 'National' ? 'bg-blue-100 text-blue-800' : ''); ?>
+
+                                    <?php echo e($extension->permission === 'Local' ? 'bg-green-100 text-green-800' : ''); ?>
+
+                                    <?php echo e($extension->permission === 'Internal' ? 'bg-gray-100 text-gray-800' : ''); ?>">
+                                    <?php echo e($extension->permission ?? 'Internal'); ?>
+
                                 </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-center">
-                                <span class="inline-flex items-center justify-center w-6 h-6 rounded-full {{ $extension->do_not_disturb ? 'bg-red-500' : 'bg-green-500' }}" 
-                                      title="{{ $extension->do_not_disturb ? 'No Molestar Activado' : 'Disponible' }}">
+                                <span class="inline-flex items-center justify-center w-6 h-6 rounded-full <?php echo e($extension->do_not_disturb ? 'bg-red-500' : 'bg-green-500'); ?>" 
+                                      title="<?php echo e($extension->do_not_disturb ? 'No Molestar Activado' : 'Disponible'); ?>">
                                 </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-600">
-                                {{ $extension->max_contacts ?? 1 }}
+                                <?php echo e($extension->max_contacts ?? 1); ?>
+
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                                @if(Auth::user()->canEditExtensions())
+                                <?php if(Auth::user()->canEditExtensions()): ?>
                                 <button type="button" 
                                         class="inline-flex items-center gap-1 px-3 py-2 rounded border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:border-blue-300"
                                         title="Editar"
                                         @click="openModal({
-                                            extension: '{{ $extension->extension }}',
-                                            first_name: '{{ addslashes($extension->first_name ?? '') }}',
-                                            last_name: '{{ addslashes($extension->last_name ?? '') }}',
-                                            email: '{{ $extension->email ?? '' }}',
-                                            phone: '{{ $extension->phone ?? '' }}',
-                                            permission: '{{ $extension->permission ?? 'Internal' }}',
-                                            do_not_disturb: {{ $extension->do_not_disturb ? 'true' : 'false' }},
-                                            max_contacts: {{ $extension->max_contacts ?? 1 }}
+                                            extension: '<?php echo e($extension->extension); ?>',
+                                            first_name: '<?php echo e(addslashes($extension->first_name ?? '')); ?>',
+                                            last_name: '<?php echo e(addslashes($extension->last_name ?? '')); ?>',
+                                            email: '<?php echo e($extension->email ?? ''); ?>',
+                                            phone: '<?php echo e($extension->phone ?? ''); ?>',
+                                            permission: '<?php echo e($extension->permission ?? 'Internal'); ?>',
+                                            do_not_disturb: <?php echo e($extension->do_not_disturb ? 'true' : 'false'); ?>,
+                                            max_contacts: <?php echo e($extension->max_contacts ?? 1); ?>
+
                                         })">
                                     <i class="fas fa-edit"></i>
                                     <span>Editar</span>
                                 </button>
-                                @else
+                                <?php else: ?>
                                 <span class="text-gray-400 text-xs">Solo lectura</span>
-                                @endif
+                                <?php endif; ?>
                             </td>
                         </tr>
-                        @empty
+                        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
                         <tr>
                             <td colspan="10" class="px-6 py-4 text-center text-gray-500">
                                 No hay anexos registrados
                             </td>
                         </tr>
-                        @endforelse
+                        <?php endif; ?>
                     </tbody>
                 </table>
             </div>
 
             <div class="px-6 py-4 border-t border-gray-200">
-                {{ $extensions->links() }}
+                <?php echo e($extensions->links()); ?>
+
             </div>
         </div>
 
@@ -545,7 +568,7 @@
 
     </div>
 
-    @push('scripts')
+    <?php $__env->startPush('scripts'); ?>
     <script>
         function extensionEditor() {
             return {
@@ -625,7 +648,7 @@
                     this.currentStep = 2;
                     
                     try {
-                        const response = await fetch(`{{ route('extension.forwarding.get') }}?extension=${this.formData.extension}`, {
+                        const response = await fetch(`<?php echo e(route('extension.forwarding.get')); ?>?extension=${this.formData.extension}`, {
                             headers: {
                                 'Accept': 'application/json',
                                 'X-Requested-With': 'XMLHttpRequest'
@@ -743,7 +766,7 @@
                             formDataObj.append('secret', this.formData.secret);
                         }
                         
-                        const extResponse = await fetch('{{ route('extension.update') }}', {
+                        const extResponse = await fetch('<?php echo e(route('extension.update')); ?>', {
                             method: 'POST',
                             body: formDataObj
                         });
@@ -756,7 +779,7 @@
                                 destination: this.forwardingData[type].destination
                             }));
                             
-                            const fwResponse = await fetch('{{ route('extension.forwarding.update') }}', {
+                            const fwResponse = await fetch('<?php echo e(route('extension.forwarding.update')); ?>', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
@@ -791,5 +814,15 @@
             }
         }
     </script>
-    @endpush
-</x-app-layout>
+    <?php $__env->stopPush(); ?>
+ <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54)): ?>
+<?php $attributes = $__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54; ?>
+<?php unset($__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginal9ac128a9029c0e4701924bd2d73d7f54)): ?>
+<?php $component = $__componentOriginal9ac128a9029c0e4701924bd2d73d7f54; ?>
+<?php unset($__componentOriginal9ac128a9029c0e4701924bd2d73d7f54); ?>
+<?php endif; ?>
+<?php /**PATH C:\xampp\htdocs\panel_llamadas\resources\views/configuracion.blade.php ENDPATH**/ ?>
