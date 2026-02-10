@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -117,82 +118,24 @@ class User extends Authenticatable
     }
 
     /**
-     * Predefined role templates.
+     * Centrales PBX asignadas al usuario.
      */
-    public static function getRoleTemplates(): array
+    public function pbxConnections(): BelongsToMany
     {
-        return [
-            'admin' => [
-                'name' => 'Administrador',
-                'description' => 'Acceso total al sistema',
-                'permissions' => [
-                    'can_sync_calls' => true,
-                    'can_edit_extensions' => true,
-                    'can_update_ips' => true,
-                    'can_edit_rates' => true,
-                    'can_manage_pbx' => true,
-                    'can_export_pdf' => true,
-                    'can_export_excel' => true,
-                    'can_view_charts' => true,
-                ],
-            ],
-            'supervisor' => [
-                'name' => 'Supervisor',
-                'description' => 'Puede sincronizar y ver reportes avanzados',
-                'permissions' => [
-                    'can_sync_calls' => true,
-                    'can_edit_extensions' => false,
-                    'can_update_ips' => false,
-                    'can_edit_rates' => false,
-                    'can_manage_pbx' => false,
-                    'can_export_pdf' => true,
-                    'can_export_excel' => true,
-                    'can_view_charts' => true,
-                ],
-            ],
-            'operator' => [
-                'name' => 'Operador',
-                'description' => 'Puede editar extensiones y exportar',
-                'permissions' => [
-                    'can_sync_calls' => false,
-                    'can_edit_extensions' => true,
-                    'can_update_ips' => true,
-                    'can_edit_rates' => false,
-                    'can_manage_pbx' => false,
-                    'can_export_pdf' => true,
-                    'can_export_excel' => true,
-                    'can_view_charts' => true,
-                ],
-            ],
-            'viewer' => [
-                'name' => 'Solo Lectura',
-                'description' => 'Solo puede ver información y exportar',
-                'permissions' => [
-                    'can_sync_calls' => false,
-                    'can_edit_extensions' => false,
-                    'can_update_ips' => false,
-                    'can_edit_rates' => false,
-                    'can_manage_pbx' => false,
-                    'can_export_pdf' => true,
-                    'can_export_excel' => true,
-                    'can_view_charts' => true,
-                ],
-            ],
-            'basic' => [
-                'name' => 'Básico',
-                'description' => 'Acceso mínimo - solo ver llamadas',
-                'permissions' => [
-                    'can_sync_calls' => false,
-                    'can_edit_extensions' => false,
-                    'can_update_ips' => false,
-                    'can_edit_rates' => false,
-                    'can_manage_pbx' => false,
-                    'can_export_pdf' => false,
-                    'can_export_excel' => false,
-                    'can_view_charts' => false,
-                ],
-            ],
-        ];
+        return $this->belongsToMany(PbxConnection::class)->withTimestamps();
+    }
+
+    /**
+     * Check if user can access a specific PBX connection.
+     * Admins can access all connections.
+     */
+    public function canAccessPbx(int $pbxId): bool
+    {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
+        return $this->pbxConnections()->where('pbx_connection_id', $pbxId)->exists();
     }
 
     /**

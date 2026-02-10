@@ -4,6 +4,7 @@
   <img src="https://img.shields.io/badge/Laravel-11-FF2D20?style=for-the-badge&logo=laravel&logoColor=white" alt="Laravel 11">
   <img src="https://img.shields.io/badge/PHP-8.2+-777BB4?style=for-the-badge&logo=php&logoColor=white" alt="PHP 8.2+">
   <img src="https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind CSS">
+  <img src="https://img.shields.io/badge/Alpine.js-3.x-8BC0D0?style=for-the-badge&logo=alpine.js&logoColor=white" alt="Alpine.js">
   <img src="https://img.shields.io/badge/Grandstream-UCM-0078D4?style=for-the-badge" alt="Grandstream UCM">
 </p>
 
@@ -11,14 +12,18 @@ Panel de administración y monitoreo de llamadas para centrales telefónicas **G
 
 ##  Características
 
--  **Dashboard interactivo** con estadísticas de llamadas
--  **Sistema Multi-Central** - Gestiona múltiples centrales PBX desde una sola interfaz
+-  **Dashboard interactivo** con estadísticas de llamadas en tiempo real
+-  **Sistema Multi-Central** — Gestiona múltiples centrales PBX desde una sola interfaz
+-  **Control de acceso por central** — Cada usuario solo ve las centrales que el admin le asigne
 -  **Sincronización automática** de CDRs desde la central Grandstream
 -  **Gestión de extensiones** con actualización de IPs bajo demanda
+-  **Desvíos de llamadas** — Configura Call Forwarding directamente desde la interfaz
 -  **Gráficos y reportes** de llamadas entrantes, salientes y perdidas
+-  **Estadísticas de colas (KPI)** — Volumen, abandono, ASA, rendimiento de agentes
 -  **Exportación a Excel/PDF** de reportes personalizados
--  **Autenticación segura** con roles de usuario
--  **Interfaz moderna** con Tailwind CSS
+-  **Gestión de usuarios** con roles (Admin, Supervisor, Usuario) y permisos granulares
+-  **Tarifas configurables** — Precios por minuto según destino (celular, nacional, internacional)
+-  **Interfaz moderna** con Tailwind CSS y Alpine.js
 -  **Protección contra sincronizaciones simultáneas** mediante sistema de locks
 
 ---
@@ -344,35 +349,52 @@ npm run dev
 
 ```
 ├── app/
-│   ├── Console/Commands/       # Comandos Artisan personalizados
-│   │   ├── SyncCalls.php       # Sincronización de CDRs
-│   │   └── ImportarExtensiones.php # Sincronización de extensiones
-│   ├── Exports/                # Exportaciones Excel
-│   ├── Http/Controllers/       # Controladores
-│   │   ├── CdrController.php   # Dashboard y llamadas
-│   │   ├── ExtensionController.php # Gestión de extensiones
-│   │   └── PbxConnectionController.php # Gestión multi-central
-│   ├── Models/                 # Modelos Eloquent
-│   │   ├── Call.php            # Modelo de llamadas (con Global Scope)
-│   │   ├── Extension.php       # Modelo de extensiones (con Global Scope)
-│   │   └── PbxConnection.php   # Modelo de centrales PBX
-│   ├── Services/               # Servicios
-│   │   └── GrandstreamService.php # Conexión con API Grandstream
-│   └── Traits/                 # Traits reutilizables
-│       └── GrandstreamTrait.php # Wrapper del servicio Grandstream
-├── config/
-│   └── services.php            # Configuración de servicios externos
+│   ├── Console/Commands/           # Comandos Artisan personalizados
+│   │   ├── SyncCalls.php           # Sincronización de CDRs
+│   │   ├── ImportarExtensiones.php # Sincronización de extensiones
+│   │   ├── SyncQueueStats.php      # Sincronización de estadísticas de colas
+│   │   └── TestApiCommands.php     # Testing interactivo de la API Grandstream
+│   ├── Exports/                    # Exportaciones Excel
+│   │   └── CallsExport.php        # Exportación de llamadas a Excel
+│   ├── Http/Controllers/           # Controladores
+│   │   ├── CdrController.php       # Dashboard, reportes, sincronización CDR
+│   │   ├── ExtensionController.php # Gestión de extensiones y desvíos
+│   │   ├── PbxConnectionController.php # Gestión multi-central
+│   │   ├── UserController.php      # CRUD de usuarios + API modal
+│   │   ├── StatsController.php     # KPIs de colas de llamadas
+│   │   ├── SettingController.php   # Tarifas de llamadas
+│   │   ├── IPController.php        # Monitor de IPs en tiempo real
+│   │   ├── AuthController.php      # Login/Logout personalizado
+│   │   └── EstadoCentral.php       # Uptime de la central
+│   ├── Models/                     # Modelos Eloquent
+│   │   ├── Call.php                # Llamadas (CDR) — con Global Scope por PBX
+│   │   ├── Extension.php           # Extensiones — con Global Scope por PBX
+│   │   ├── PbxConnection.php       # Centrales PBX (relación N:M con User)
+│   │   ├── QueueCallDetail.php     # Detalles de colas — con Global Scope por PBX
+│   │   ├── User.php                # Usuarios (relación N:M con PbxConnection)
+│   │   └── Setting.php             # Configuración clave-valor (tarifas)
+│   ├── Services/                   # Servicios
+│   │   ├── GrandstreamService.php  # Conexión con API Grandstream UCM
+│   │   └── CallBillingAnalyzer.php # Análisis de facturación de llamadas
+│   └── Traits/                     # Traits reutilizables
+│       └── GrandstreamTrait.php    # Wrapper del servicio Grandstream
 ├── database/
-│   ├── migrations/             # Migraciones de BD
-│   └── seeders/                # Seeders de datos iniciales
-├── resources/
-│   └── views/                  # Vistas Blade
-│       ├── pbx/                # Vistas de gestión de centrales
-│       │   ├── index.blade.php # Lista de centrales
-│       │   └── setup.blade.php # Configuración inicial
-│       └── configuracion.blade.php # Gestión de extensiones
+│   ├── migrations/                 # Migraciones de BD
+│   │   └── ...                     # ~20 migraciones incluyendo pivot table
+│   └── seeders/                    # Seeders de datos iniciales
+│       ├── UserSeeder.php          # Crea admin + usuario desde .env
+│       ├── SettingSeeder.php       # Tarifas por defecto
+│       └── PbxConnectionSeeder.php # Central de ejemplo
+├── resources/views/                # Vistas Blade
+│   ├── layouts/                    # Layouts principales (app, guest, sidebar)
+│   ├── pbx/                        # Selector de centrales + gestión usuarios (modal)
+│   │   ├── index.blade.php         # Lista centrales + modal usuarios (Alpine.js)
+│   │   └── setup.blade.php         # Configuración inicial / sincronización
+│   ├── users/                      # Vistas standalone de usuarios (CRUD)
+│   ├── stats/                      # KPIs de colas
+│   └── ...                         # Dashboard, configuración, gráficos, etc.
 └── routes/
-    └── web.php                 # Rutas de la aplicación
+    └── web.php                     # Todas las rutas de la aplicación
 ```
 
 ---
@@ -384,24 +406,74 @@ El panel soporta la gestión de **múltiples centrales PBX** desde una sola inst
 ### Flujo de Uso
 
 1. **Login** → Se muestra la lista de centrales disponibles
-2. **Seleccionar Central** → Si tiene datos, va al Dashboard
-3. **Central sin datos** → Se muestra página de Configuración Inicial
-4. **Sincronizar** → Importa extensiones y/o llamadas
-5. **Dashboard** → Trabaja con los datos de esa central
+2. **Filtrado por acceso** → Cada usuario solo ve las centrales que el admin le asignó
+3. **Seleccionar Central** → Si tiene datos, va al Dashboard
+4. **Central sin datos** → Se muestra página de Configuración Inicial (solo admin)
+5. **Sincronizar** → Importa extensiones y/o llamadas desde la API Grandstream
+6. **Dashboard** → Trabaja con los datos de esa central
+
+### Control de Acceso por Central
+
+El sistema controla qué centrales puede ver cada usuario mediante una **tabla pivot** (`pbx_connection_user`):
+
+- **Administradores**: Ven TODAS las centrales automáticamente (no necesitan asignación)
+- **Supervisores/Usuarios**: Solo ven las centrales que el admin les asigne
+- **Asignación**: Se realiza desde el modal de gestión de usuarios en la página de centrales
+- Al crear o editar un usuario, el admin puede marcar con checkboxes las centrales permitidas
+- Cada central se muestra con su **nombre** e **IP** para fácil identificación
 
 ### Características
 
 - Cada central tiene sus propios datos de llamadas y extensiones
 - Los datos se filtran automáticamente por la central activa (Global Scopes)
 - Puedes cambiar de central en cualquier momento
-- Las credenciales de cada central se almacenan de forma segura
+- Las credenciales de cada central se almacenan de forma segura (encriptadas)
+- La selección de central verifica autorización del usuario antes de permitir acceso
 
 ### Agregar Nueva Central
 
 1. Ir a **Gestión de Centrales PBX** (`/pbx`)
-2. Click en **Agregar Central**
+2. Click en **Agregar Central** (solo admin)
 3. Completar: Nombre, IP, Puerto, Usuario, Contraseña
 4. Guardar y Seleccionar
+
+---
+
+##  Gestión de Usuarios
+
+Los usuarios se gestionan desde la **página de centrales PBX** (`/pbx`) a través de un modal interactivo.
+
+### Roles
+
+| Rol | Descripción |
+|-----|-------------|
+| **Admin** | Acceso total. Ve todas las centrales. Puede crear/editar usuarios y centrales |
+| **Supervisor** | Permisos intermedios configurables. Solo ve centrales asignadas |
+| **Usuario** | Permisos básicos configurables. Solo ve centrales asignadas |
+
+### Permisos Granulares
+
+Cada usuario (que no sea admin) tiene permisos individuales:
+
+| Permiso | Descripción |
+|---------|-------------|
+| Sincronizar Llamadas | Ejecutar sincronización de CDRs desde la central |
+| Editar Extensiones | Modificar datos de extensiones en la central |
+| Actualizar IPs | Actualizar las IPs de los anexos |
+| Gestionar Centrales PBX | Crear, editar y eliminar centrales |
+| Editar Tarifas | Modificar precios por minuto |
+| Exportar PDF | Descargar reportes en PDF |
+| Exportar Excel | Descargar reportes en Excel |
+| Ver Gráficos | Acceder a la sección de estadísticas |
+
+> Los administradores tienen **todos los permisos** automáticamente.
+
+### Asignación de Centrales
+
+Al crear o editar un usuario, el admin puede:
+- Marcar/desmarcar centrales individuales con checkboxes
+- Usar "Seleccionar Todas" o "Ninguna" para asignación rápida
+- Ver el nombre y la IP de cada central para identificarla fácilmente
 
 ---
 
@@ -409,10 +481,14 @@ El panel soporta la gestión de **múltiples centrales PBX** desde una sola inst
 
 - Las credenciales sensibles se manejan exclusivamente mediante variables de entorno
 - El archivo `.env` está excluido del repositorio (`.gitignore`)
-- Las contraseñas se almacenan con hash Bcrypt
-- Las contraseñas de las centrales PBX se encriptan en la base de datos
+- Las contraseñas de usuario se almacenan con hash Bcrypt
+- Las contraseñas de las centrales PBX se encriptan en la base de datos (Laravel `encrypted` cast)
 - Protección CSRF en todos los formularios
 - Sistema de locks para prevenir sincronizaciones simultáneas
+- **Control de acceso por central**: Los usuarios solo pueden acceder a las centrales que el admin les asigne
+- **Verificación de autorización**: Al seleccionar una central, el sistema verifica que el usuario tenga permiso
+- Middleware `admin` para proteger rutas administrativas
+- Middleware `pbx.selected` para asegurar que haya una central activa en sesión
 
 ---
 

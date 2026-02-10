@@ -240,6 +240,69 @@
             cursor: pointer;
         }
         .btn-save:hover { background: #0056b3; }
+
+        /* ===== User Management Modal ===== */
+        .btn-users {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #6f42c1;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-top: 15px;
+            margin-left: 10px;
+        }
+        .btn-users:hover { background: #5a32a3; }
+        .modal-users { max-width: 920px; }
+        .users-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .users-table th {
+            background: #f8f9fa; padding: 10px 12px; text-align: left;
+            font-size: 0.8rem; text-transform: uppercase; color: #666;
+            border-bottom: 2px solid #dee2e6;
+        }
+        .users-table td { padding: 10px 12px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        .users-table tr:hover { background: #f8f9fa; }
+        .user-avatar {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 35px; height: 35px; border-radius: 50%;
+            color: white; font-weight: bold; font-size: 0.9rem; flex-shrink: 0;
+        }
+        .badge-role {
+            display: inline-block; padding: 3px 10px; border-radius: 10px;
+            font-size: 0.75rem; font-weight: 600;
+        }
+        .badge-perm {
+            display: inline-block; padding: 2px 6px; border-radius: 3px;
+            font-size: 0.7rem; font-weight: 500;
+        }
+        .user-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label {
+            display: block; margin-bottom: 5px; color: #333;
+            font-weight: 500; font-size: 0.9rem;
+        }
+        .form-group input, .form-group select {
+            width: 100%; padding: 8px 10px; border: 1px solid #ddd;
+            border-radius: 4px; font-size: 0.9rem;
+        }
+        .form-group input:focus, .form-group select:focus {
+            border-color: #007bff; outline: none;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+        .field-error { color: #dc3545; font-size: 0.8rem; margin-top: 3px; display: block; }
+        .perm-checkbox {
+            display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+            cursor: pointer; border-radius: 4px; font-size: 0.85rem;
+            color: #333; margin-bottom: 2px;
+        }
+        .perm-checkbox:hover { background: #e9ecef; }
+        .perm-checkbox input[type="checkbox"] { width: 16px; height: 16px; flex-shrink: 0; }
+        @media (max-width: 700px) {
+            .user-form-grid { grid-template-columns: 1fr; }
+            .modal-users { max-width: 95vw; }
+        }
     </style>
 </head>
 <body x-data="pbxManager()">
@@ -286,6 +349,248 @@
             <button @click="openCreateModal()" class="btn-add">
                 <i class="fas fa-plus"></i> Agregar Nueva Central
             </button>
+            {{-- User Management (modal inline, separate Alpine scope) --}}
+            <div x-data="userManager()" style="display: inline-block; vertical-align: top;">
+                <button @click="openModal()" class="btn-users">
+                    <i class="fas fa-users-cog"></i> Gestión Usuarios
+                </button>
+
+                {{-- ===== USER MANAGEMENT MODAL ===== --}}
+                <div x-show="showUserModal" class="modal-backdrop" style="display: none;" x-transition>
+                    <div class="modal modal-users" @click.outside="closeModal()">
+
+                        {{-- ===== LIST VIEW ===== --}}
+                        <div x-show="currentView === 'list'">
+                            <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;">
+                                <h3><i class="fas fa-users"></i> Gestión de Usuarios</h3>
+                                <button @click="closeModal()" style="background:none;border:none;color:white;font-size:1.2rem;cursor:pointer;">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+                                <div x-show="successMessage" class="alert alert-success" style="margin-bottom:15px;" x-text="successMessage" x-transition></div>
+                                <div x-show="errorMessage && currentView === 'list'" class="alert alert-danger" style="margin-bottom:15px;" x-text="errorMessage" x-transition></div>
+
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                                    <span style="color:#666;" x-text="'Total: ' + users.length + ' usuarios'"></span>
+                                    <button @click="showCreateForm()" class="btn-add" style="margin:0;">
+                                        <i class="fas fa-user-plus"></i> Nuevo Usuario
+                                    </button>
+                                </div>
+
+                                <div x-show="isLoading" style="text-align:center;padding:30px;">
+                                    <i class="fas fa-spinner fa-spin fa-2x" style="color:#007bff;"></i>
+                                    <p style="color:#666;margin-top:10px;">Cargando usuarios...</p>
+                                </div>
+
+                                <div x-show="!isLoading">
+                                    <table class="users-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Usuario</th>
+                                                <th>Email</th>
+                                                <th style="text-align:center;">Rol</th>
+                                                <th style="text-align:center;">Permisos</th>
+                                                <th style="text-align:center;">Centrales</th>
+                                                <th style="text-align:center;">Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <template x-for="user in users" :key="user.id">
+                                                <tr :style="user.is_current ? 'background:#e8f4fd' : ''">
+                                                    <td>
+                                                        <div style="display:flex;align-items:center;gap:10px;">
+                                                            <span class="user-avatar" :style="'background:' + (user.is_admin ? '#ffc107' : '#6c757d')" x-text="user.name.charAt(0).toUpperCase()"></span>
+                                                            <div>
+                                                                <span style="font-weight:500;" x-text="user.name"></span>
+                                                                <span x-show="user.is_current" style="color:#007bff;font-size:0.8rem;"> (Tú)</span>
+                                                                <div style="font-size:0.8rem;color:#999;" x-text="'Creado: ' + user.created_at"></div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td x-text="user.email" style="color:#666;"></td>
+                                                    <td style="text-align:center;">
+                                                        <span class="badge-role" :style="'background:' + getRoleBadge(user).bg + ';color:' + getRoleBadge(user).text" x-text="user.role_display"></span>
+                                                    </td>
+                                                    <td style="text-align:center;">
+                                                        <div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:center;">
+                                                            <template x-for="badge in getPermBadges(user)" :key="badge.text">
+                                                                <span class="badge-perm" :style="'background:' + badge.bg + ';color:' + badge.fg" x-text="badge.text"></span>
+                                                            </template>
+                                                        </div>
+                                                    </td>
+                                                    <td style="text-align:center;">
+                                                        <div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:center;">
+                                                            <template x-if="user.is_admin">
+                                                                <span class="badge-perm" style="background:#d4edda;color:#155724;">Todas</span>
+                                                            </template>
+                                                            <template x-if="!user.is_admin && user.allowed_pbx_ids.length === 0">
+                                                                <span class="badge-perm" style="background:#f8d7da;color:#721c24;">Ninguna</span>
+                                                            </template>
+                                                            <template x-if="!user.is_admin && user.allowed_pbx_ids.length > 0">
+                                                                <span class="badge-perm" style="background:#d6eaf8;color:#2874a6;" x-text="user.allowed_pbx_ids.length + ' central(es)'"></span>
+                                                            </template>
+                                                        </div>
+                                                    </td>
+                                                    <td style="text-align:center;">
+                                                        <div x-show="!user.is_current" style="display:flex;gap:5px;justify-content:center;">
+                                                            <button @click="showEditForm(user)" class="btn-edit" style="padding:5px 10px;font-size:0.8rem;">
+                                                                <i class="fas fa-edit"></i>
+                                                            </button>
+                                                            <button @click="deleteUser(user)" class="btn-delete" style="padding:5px 10px;font-size:0.8rem;">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        </div>
+                                                        <span x-show="user.is_current" style="color:#999;font-size:0.8rem;">N/A</span>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        {{-- ===== FORM VIEW (Create / Edit) ===== --}}
+                        <div x-show="currentView === 'form'">
+                            <div class="modal-header">
+                                <h3>
+                                    <i class="fas" :class="editingUserId ? 'fa-user-edit' : 'fa-user-plus'"></i>
+                                    <span x-text="editingUserId ? 'Editar: ' + form.name : 'Nuevo Usuario'"></span>
+                                </h3>
+                            </div>
+                            <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
+                                <div x-show="errorMessage && currentView === 'form'" class="alert alert-danger" style="margin-bottom:15px;" x-text="errorMessage" x-transition></div>
+
+                                <div class="user-form-grid">
+                                    {{-- Left: User Info --}}
+                                    <div>
+                                        <h4 style="margin:0 0 15px;color:#333;border-bottom:1px solid #eee;padding-bottom:8px;">
+                                            <i class="fas fa-user" style="color:#999;margin-right:5px;"></i> Información
+                                        </h4>
+                                        <div class="form-group">
+                                            <label>Nombre Completo *</label>
+                                            <input type="text" x-model="form.name" placeholder="Juan Pérez">
+                                            <template x-if="errors.name"><span class="field-error" x-text="errors.name[0]"></span></template>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Correo Electrónico *</label>
+                                            <input type="email" x-model="form.email" placeholder="correo@ejemplo.com">
+                                            <template x-if="errors.email"><span class="field-error" x-text="errors.email[0]"></span></template>
+                                        </div>
+                                        <div class="form-group">
+                                            <label x-text="editingUserId ? 'Nueva Contraseña (dejar vacío para mantener)' : 'Contraseña *'"></label>
+                                            <input type="password" x-model="form.password" placeholder="Mínimo 6 caracteres">
+                                            <template x-if="errors.password"><span class="field-error" x-text="errors.password[0]"></span></template>
+                                        </div>
+                                        <div class="form-group">
+                                            <label x-text="editingUserId ? 'Confirmar Nueva Contraseña' : 'Confirmar Contraseña *'"></label>
+                                            <input type="password" x-model="form.password_confirmation" placeholder="Repite la contraseña">
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Rol Base *</label>
+                                            <select x-model="form.role" @change="updateRole()">
+                                                <option value="user">Usuario</option>
+                                                <option value="supervisor">Supervisor</option>
+                                                <option value="admin">Administrador</option>
+                                            </select>
+                                            <p x-show="form.role === 'admin'" style="color:#e67e22;font-size:0.8rem;margin-top:5px;">
+                                                <i class="fas fa-crown"></i> El administrador tiene acceso total.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {{-- Right: Permissions + Centrals --}}
+                                    <div>
+                                        <h4 style="margin:0 0 15px;color:#333;border-bottom:1px solid #eee;padding-bottom:8px;">
+                                            <i class="fas fa-key" style="color:#999;margin-right:5px;"></i> Permisos
+                                        </h4>
+                                        <div :style="form.role === 'admin' ? 'opacity:0.5;pointer-events:none;' : ''">
+                                            <div style="background:#f8f9fa;padding:10px;border-radius:4px;margin-bottom:10px;">
+                                                <h5 style="font-size:0.85rem;color:#666;margin:0 0 8px;">
+                                                    <i class="fas fa-server" style="color:#e67e22;"></i> Acciones de API
+                                                </h5>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_sync_calls"> Sincronizar Llamadas</label>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_edit_extensions"> Editar Anexos</label>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_update_ips"> Actualizar IPs</label>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_manage_pbx"> Gestionar PBX</label>
+                                            </div>
+                                            <div style="background:#f8f9fa;padding:10px;border-radius:4px;margin-bottom:10px;">
+                                                <h5 style="font-size:0.85rem;color:#666;margin:0 0 8px;">
+                                                    <i class="fas fa-cog" style="color:#8e44ad;"></i> Configuración
+                                                </h5>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_edit_rates"> Editar Tarifas</label>
+                                            </div>
+                                            <div style="background:#f8f9fa;padding:10px;border-radius:4px;">
+                                                <h5 style="font-size:0.85rem;color:#666;margin:0 0 8px;">
+                                                    <i class="fas fa-file-alt" style="color:#27ae60;"></i> Reportes
+                                                </h5>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_export_pdf"> Exportar PDF</label>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_export_excel"> Exportar Excel</label>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_view_charts"> Ver Gráficos</label>
+                                            </div>
+                                        </div>
+                                        <div x-show="form.role === 'admin'" style="background:#fff3cd;border:1px solid #ffc107;padding:10px;border-radius:4px;margin-top:10px;">
+                                            <p style="font-size:0.85rem;color:#856404;margin:0;">
+                                                <i class="fas fa-info-circle"></i> Los administradores tienen todos los permisos y acceso a todas las centrales.
+                                            </p>
+                                        </div>
+
+                                        {{-- Centrales Permitidas --}}
+                                        <div style="margin-top:15px;" :style="form.role === 'admin' ? 'opacity:0.5;pointer-events:none;' : ''">
+                                            <h4 style="margin:0 0 10px;color:#333;border-bottom:1px solid #eee;padding-bottom:8px;">
+                                                <i class="fas fa-server" style="color:#17a2b8;margin-right:5px;"></i> Centrales Permitidas
+                                            </h4>
+                                            <p style="font-size:0.8rem;color:#666;margin:0 0 10px;">
+                                                Selecciona las centrales a las que este usuario tendrá acceso.
+                                            </p>
+                                            <div x-show="pbxConnections.length === 0" style="background:#f8f9fa;padding:15px;border-radius:4px;text-align:center;color:#999;">
+                                                <i class="fas fa-server"></i> No hay centrales configuradas.
+                                            </div>
+                                            <div x-show="pbxConnections.length > 0" style="max-height:200px;overflow-y:auto;border:1px solid #dee2e6;border-radius:4px;">
+                                                <template x-for="conn in pbxConnections" :key="conn.id">
+                                                    <label class="perm-checkbox" style="padding:8px 10px;border-bottom:1px solid #f0f0f0;margin:0;">
+                                                        <input type="checkbox"
+                                                               :value="conn.id"
+                                                               :checked="form.allowed_pbx_ids.includes(conn.id)"
+                                                               @change="togglePbx(conn.id)">
+                                                        <div style="flex:1;">
+                                                            <span style="font-weight:500;" x-text="conn.name || 'Sin nombre'"></span>
+                                                            <span style="font-size:0.8rem;color:#666;font-family:monospace;margin-left:5px;" x-text="conn.ip + ':' + conn.port"></span>
+                                                            <span x-show="conn.status !== 'ready'" class="badge-perm" style="margin-left:5px;"
+                                                                  :style="'background:' + (conn.status === 'error' ? '#f8d7da' : '#fff3cd') + ';color:' + (conn.status === 'error' ? '#721c24' : '#856404')"
+                                                                  x-text="conn.status === 'pending' ? 'Pendiente' : (conn.status === 'syncing' ? 'Sincronizando' : (conn.status === 'error' ? 'Error' : conn.status))">
+                                                            </span>
+                                                        </div>
+                                                    </label>
+                                                </template>
+                                            </div>
+                                            <div style="margin-top:8px;display:flex;gap:10px;">
+                                                <button type="button" @click="selectAllPbx()" style="font-size:0.8rem;color:#007bff;background:none;border:none;cursor:pointer;padding:0;">
+                                                    <i class="fas fa-check-double"></i> Todas
+                                                </button>
+                                                <button type="button" @click="form.allowed_pbx_ids = []" style="font-size:0.8rem;color:#dc3545;background:none;border:none;cursor:pointer;padding:0;">
+                                                    <i class="fas fa-times"></i> Ninguna
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button @click="backToList()" class="btn-cancel">
+                                    <i class="fas fa-arrow-left"></i> Volver
+                                </button>
+                                <button @click="editingUserId ? updateUser() : saveUser()" class="btn-save" :disabled="isSaving">
+                                    <i class="fas" :class="isSaving ? 'fa-spinner fa-spin' : 'fa-save'"></i>
+                                    <span x-text="isSaving ? 'Guardando...' : (editingUserId ? 'Guardar Cambios' : 'Crear Usuario')"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
             @endif
         </div>
 
@@ -521,6 +826,227 @@
                     this.deleteAction = '{{ url("pbx") }}/' + id;
                     this.deleteConnectionName = name;
                     this.showDeleteModal = true;
+                }
+            }
+        }
+
+        function userManager() {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+            const apiBase = '{{ url("api/usuarios") }}';
+
+            return {
+                showUserModal: false,
+                currentView: 'list',
+                users: [],
+                pbxConnections: [],
+                isLoading: false,
+                isSaving: false,
+                editingUserId: null,
+                successMessage: '',
+                errorMessage: '',
+                errors: {},
+                form: {
+                    name: '', email: '', password: '', password_confirmation: '',
+                    role: 'user',
+                    can_sync_calls: false, can_edit_extensions: false,
+                    can_update_ips: false, can_edit_rates: false,
+                    can_manage_pbx: false, can_export_pdf: true,
+                    can_export_excel: true, can_view_charts: true,
+                    allowed_pbx_ids: [],
+                },
+
+                async openModal() {
+                    this.showUserModal = true;
+                    this.currentView = 'list';
+                    this.successMessage = '';
+                    this.errorMessage = '';
+                    await this.loadUsers();
+                },
+
+                closeModal() {
+                    if (this.isSaving) return;
+                    this.showUserModal = false;
+                    this.currentView = 'list';
+                    this.successMessage = '';
+                    this.errorMessage = '';
+                },
+
+                async loadUsers() {
+                    this.isLoading = true;
+                    try {
+                        const res = await fetch(apiBase, {
+                            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken }
+                        });
+                        const data = await res.json();
+                        this.users = data.users;
+                        this.pbxConnections = data.pbxConnections;
+                    } catch (e) {
+                        this.errorMessage = 'Error cargando usuarios.';
+                    }
+                    this.isLoading = false;
+                },
+
+                showCreateForm() {
+                    this.editingUserId = null;
+                    this.form = {
+                        name: '', email: '', password: '', password_confirmation: '',
+                        role: 'user',
+                        can_sync_calls: false, can_edit_extensions: false,
+                        can_update_ips: false, can_edit_rates: false,
+                        can_manage_pbx: false, can_export_pdf: true,
+                        can_export_excel: true, can_view_charts: true,
+                        allowed_pbx_ids: [],
+                    };
+                    this.errors = {};
+                    this.errorMessage = '';
+                    this.currentView = 'form';
+                },
+
+                showEditForm(user) {
+                    this.editingUserId = user.id;
+                    this.form = {
+                        name: user.name, email: user.email,
+                        password: '', password_confirmation: '',
+                        role: user.role,
+                        can_sync_calls: user.can_sync_calls,
+                        can_edit_extensions: user.can_edit_extensions,
+                        can_update_ips: user.can_update_ips,
+                        can_edit_rates: user.can_edit_rates,
+                        can_manage_pbx: user.can_manage_pbx,
+                        can_export_pdf: user.can_export_pdf,
+                        can_export_excel: user.can_export_excel,
+                        can_view_charts: user.can_view_charts,
+                        allowed_pbx_ids: [...(user.allowed_pbx_ids || [])],
+                    };
+                    this.errors = {};
+                    this.errorMessage = '';
+                    this.currentView = 'form';
+                },
+
+                backToList() {
+                    this.currentView = 'list';
+                    this.errorMessage = '';
+                    this.errors = {};
+                },
+
+                async saveUser() {
+                    this.isSaving = true;
+                    this.errors = {};
+                    this.errorMessage = '';
+                    try {
+                        const res = await fetch(apiBase, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: JSON.stringify(this.form)
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            this.successMessage = data.message;
+                            this.currentView = 'list';
+                            await this.loadUsers();
+                            setTimeout(() => this.successMessage = '', 4000);
+                        } else {
+                            this.errors = data.errors || {};
+                            this.errorMessage = data.message || 'Error al crear usuario.';
+                        }
+                    } catch (e) {
+                        this.errorMessage = 'Error de conexión.';
+                    }
+                    this.isSaving = false;
+                },
+
+                async updateUser() {
+                    this.isSaving = true;
+                    this.errors = {};
+                    this.errorMessage = '';
+                    try {
+                        const res = await fetch(apiBase + '/' + this.editingUserId, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: JSON.stringify(this.form)
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            this.successMessage = data.message;
+                            this.currentView = 'list';
+                            await this.loadUsers();
+                            setTimeout(() => this.successMessage = '', 4000);
+                        } else {
+                            this.errors = data.errors || {};
+                            this.errorMessage = data.message || 'Error al actualizar usuario.';
+                        }
+                    } catch (e) {
+                        this.errorMessage = 'Error de conexión.';
+                    }
+                    this.isSaving = false;
+                },
+
+                async deleteUser(user) {
+                    if (!confirm('¿Estás seguro de eliminar a ' + user.name + '?')) return;
+                    try {
+                        const res = await fetch(apiBase + '/' + user.id, {
+                            method: 'DELETE',
+                            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken }
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            this.successMessage = data.message;
+                            await this.loadUsers();
+                            setTimeout(() => this.successMessage = '', 4000);
+                        } else {
+                            this.errorMessage = data.message || 'Error al eliminar usuario.';
+                        }
+                    } catch (e) {
+                        this.errorMessage = 'Error de conexión.';
+                    }
+                },
+
+                updateRole() {
+                    if (this.form.role === 'admin') {
+                        ['can_sync_calls','can_edit_extensions','can_update_ips','can_edit_rates',
+                         'can_manage_pbx','can_export_pdf','can_export_excel','can_view_charts'
+                        ].forEach(p => this.form[p] = true);
+                    }
+                },
+
+                togglePbx(id) {
+                    const idx = this.form.allowed_pbx_ids.indexOf(id);
+                    if (idx > -1) {
+                        this.form.allowed_pbx_ids.splice(idx, 1);
+                    } else {
+                        this.form.allowed_pbx_ids.push(id);
+                    }
+                },
+
+                selectAllPbx() {
+                    this.form.allowed_pbx_ids = this.pbxConnections.map(c => c.id);
+                },
+
+                getPermBadges(user) {
+                    if (user.is_admin) return [{text:'Todos', bg:'#d4edda', fg:'#155724'}];
+                    const b = [];
+                    if (user.can_sync_calls) b.push({text:'Sync', bg:'#cce5ff', fg:'#004085'});
+                    if (user.can_edit_extensions) b.push({text:'Ext', bg:'#e8daef', fg:'#6c3483'});
+                    if (user.can_edit_rates) b.push({text:'Tar', bg:'#fdebd0', fg:'#e67e22'});
+                    if (user.can_manage_pbx) b.push({text:'PBX', bg:'#fadbd8', fg:'#c0392b'});
+                    if (user.can_export_pdf) b.push({text:'PDF', bg:'#f5b7b1', fg:'#922b21'});
+                    if (user.can_export_excel) b.push({text:'XLS', bg:'#d5f5e3', fg:'#1e8449'});
+                    if (user.can_view_charts) b.push({text:'Graf', bg:'#d6eaf8', fg:'#2874a6'});
+                    if (b.length === 0) b.push({text:'Solo lectura', bg:'#eee', fg:'#999'});
+                    return b;
+                },
+
+                getRoleBadge(user) {
+                    const c = { admin:{bg:'#ffc107',text:'#333'}, supervisor:{bg:'#007bff',text:'#fff'}, user:{bg:'#6c757d',text:'#fff'} };
+                    return c[user.role] || c.user;
                 }
             }
         }

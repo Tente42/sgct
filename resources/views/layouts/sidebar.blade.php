@@ -2,7 +2,7 @@
 <aside class="w-64 bg-gray-800 text-white flex flex-col fixed inset-y-0 left-0 z-40" style="height: 100vh;">
     <!-- Logo -->
     <div class="flex items-center justify-center h-16 bg-gray-900 flex-shrink-0">
-        <span class="text-xl font-bold">Panel de Llamadas</span>
+        <span class="text-xl font-bold">Central UCM</span>
     </div>
 
     <!-- Menu Items - Scrolleable solo si es necesario -->
@@ -59,21 +59,7 @@
                 </a>
             </li>
             
-            @if(Auth::user()->isAdmin())
-            <li class="mt-4 pt-4 border-t border-gray-700">
-                <span class="ml-4 text-xs text-gray-500 uppercase tracking-wider">Administración</span>
-            </li>
-            <li>
-                <a href="{{ route('users.index') }}" class="relative flex flex-row items-center h-11 focus:outline-none hover:bg-gray-700 text-white-600 hover:text-white-800 border-l-4 border-transparent hover:border-yellow-500 pr-6">
-                    <span class="inline-flex justify-center items-center ml-4">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                        </svg>
-                    </span>
-                    <span class="ml-2 text-sm tracking-wide truncate">Gestión Usuarios</span>
-                </a>
-            </li>
-            @endif
+
         </ul>
     </nav>
 

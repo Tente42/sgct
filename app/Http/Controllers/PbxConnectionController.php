@@ -18,7 +18,7 @@ class PbxConnectionController extends Controller
 
     /**
      * Lista todas las centrales PBX
-     * Los usuarios normales solo ven las centrales con estado "ready"
+     * Admins ven todas. Usuarios normales ven solo las centrales "ready" que tienen asignadas.
      */
     public function index(): View
     {
@@ -26,9 +26,11 @@ class PbxConnectionController extends Controller
         
         $query = PbxConnection::orderBy('name');
         
-        // Usuarios no-admin solo ven centrales listas
+        // Usuarios no-admin solo ven centrales listas y asignadas
         if (!$user->isAdmin()) {
-            $query->where('status', PbxConnection::STATUS_READY);
+            $allowedIds = $user->pbxConnections()->pluck('pbx_connection_id')->toArray();
+            $query->where('status', PbxConnection::STATUS_READY)
+                  ->whereIn('id', $allowedIds);
         }
 
         return view('pbx.index', [
@@ -95,6 +97,12 @@ class PbxConnectionController extends Controller
     public function select(PbxConnection $pbx): RedirectResponse
     {
         $user = auth()->user();
+
+        // Si no es admin, verificar que tenga acceso a esta central
+        if (!$user->isAdmin() && !$user->canAccessPbx($pbx->id)) {
+            return redirect()->route('pbx.index')
+                ->with('error', 'No tienes acceso a esta central.');
+        }
 
         // Si no está lista y el usuario no es admin, denegar acceso
         if (!$pbx->isReady() && !$user->isAdmin()) {

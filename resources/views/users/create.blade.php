@@ -108,21 +108,6 @@
                             <i class="fas fa-key text-gray-400 mr-1"></i> Permisos
                         </h4>
 
-                        <!-- Selector de Plantilla -->
-                        <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                            <label class="block text-sm font-medium text-blue-800 mb-2">
-                                <i class="fas fa-magic mr-1"></i> Aplicar Plantilla Predefinida
-                            </label>
-                            <select @change="applyTemplate($event.target.value)" 
-                                    class="w-full rounded-md border-blue-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                                    :disabled="selectedRole === 'admin'">
-                                <option value="">-- Seleccionar plantilla --</option>
-                                @foreach($roleTemplates as $key => $template)
-                                    <option value="{{ $key }}">{{ $template['name'] }} - {{ $template['description'] }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-
                         <!-- Lista de Permisos -->
                         <div class="space-y-3" :class="{ 'opacity-50 pointer-events-none': selectedRole === 'admin' }">
                             
@@ -268,24 +253,11 @@
                     can_export_excel: {{ old('can_export_excel', true) ? 'true' : 'false' }},
                     can_view_charts: {{ old('can_view_charts', true) ? 'true' : 'false' }},
                 },
-                templates: @json($roleTemplates),
-
                 updateRole() {
                     if (this.selectedRole === 'admin') {
                         // Admin has all permissions
                         for (let key in this.permissions) {
                             this.permissions[key] = true;
-                        }
-                    }
-                },
-
-                applyTemplate(templateKey) {
-                    if (templateKey && this.templates[templateKey]) {
-                        const perms = this.templates[templateKey].permissions;
-                        for (let key in perms) {
-                            if (this.permissions.hasOwnProperty(key)) {
-                                this.permissions[key] = perms[key];
-                            }
                         }
                     }
                 }

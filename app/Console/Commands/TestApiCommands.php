@@ -21,9 +21,8 @@ class TestApiCommands extends Command
                             {--start-time= : Fecha inicial para queueapi (YYYY-MM-DD). Por defecto: hoy}
                             {--end-time= : Fecha final para queueapi (YYYY-MM-DD). Por defecto: hoy}
                             {--days=30 : Número de días hacia atrás para buscar llamadas (por defecto 30)}
-                            {--all-calls : Mostrar todas las llamadas (entrantes y salientes) del anexo}
-                            {--incoming : Solo mostrar llamadas entrantes}
-                            {--outgoing : Solo mostrar llamadas salientes}
+                            {--call-type=* : Filtrar por tipo de llamada (inbound, outbound, internal, external). Puede seleccionar múltiples}
+                            {--status=* : Filtrar por estado (answered, no-answer, busy, failed). Puede seleccionar múltiples}
                             {--agent= : Número de agente para queueapi (usa * para todos)}
                             {--stats-type=overview : Tipo de estadísticas: overview, calldetail, loginhistory, pausedhistory}
                             {--today : Usar solo la fecha de hoy para queueapi}
@@ -65,18 +64,24 @@ class TestApiCommands extends Command
             $this->info("  - updateSIPAccount");
             $this->info("  - queueapi");
             $this->info("  - cdrapi");
+            $this->info("  - cdr                     (cuestionario interactivo CDR)");
             $this->info("  - kpi-turnos");
             $this->info("  - explore-action-types");
+            $this->info("  - analyze-billing         (analiza qué llamadas son cobrables)");
             $this->newLine();
             $this->info("Ejemplos de uso:");
             $this->info("  php artisan api:test --pbx=1 --action=listExtensionGroup");
             $this->info("  php artisan api:test --pbx=1 --action=listQueue");
-            $this->info("  php artisan api:test --pbx=1 --action=cdrapi --caller=4445 --days=30 --all-calls");
-            $this->info("  php artisan api:test --pbx=1 --action=cdrapi --caller=4445 --incoming --days=7");
+            $this->info("  php artisan api:test --pbx=1 --action=cdrapi --caller=4445 --days=30");
+            $this->info("  php artisan api:test --pbx=1 --action=cdrapi --caller=4445 --call-type=inbound --days=7");
+            $this->info("  php artisan api:test --pbx=1 --action=cdrapi --caller=4445 --call-type=inbound --call-type=outbound --status=answered");
+            $this->info("  php artisan api:test --pbx=1 --action=cdrapi --caller=4445 --call-type=internal --status=answered --status=no-answer");
             $this->info("  php artisan api:test --pbx=1 --action=queueapi --today --queue=6500");
             $this->info("  php artisan api:test --pbx=1 --action=queueapi --start-time=2026-02-03 --end-time=2026-02-04 --queue=6500");
             $this->info("  php artisan api:test --pbx=1 --action=kpi-turnos --today --queue=6500");
             $this->info("  php artisan api:test --pbx=1 --action=explore-action-types");
+            $this->info("  php artisan api:test --pbx=1 --action=analyze-billing       (analizar llamadas cobrables)");
+            $this->info("  php artisan api:test --pbx=1 --action=cdr                   (cuestionario interactivo)");
             $this->info("  php artisan api:test --pbx=1 --action=updateSIPAccount --extension=4444  (modo interactivo)");
             return 0;
         }
@@ -106,10 +111,14 @@ class TestApiCommands extends Command
                 return $this->testQueueApi();
             case 'cdrapi':
                 return $this->testCdrApi();
+            case 'cdr':
+                return $this->interactiveCdrApi();
             case 'kpi-turnos':
                 return $this->testKpiTurnos();
             case 'explore-action-types':
                 return $this->exploreActionTypes();
+            case 'analyze-billing':
+                return $this->analyzeBilling();
             default:
                 $this->error("Acción '{$action}' no reconocida.");
                 return 1;
@@ -358,35 +367,58 @@ class TestApiCommands extends Command
         $caller = $this->option('caller');
         $uniqueid = $this->option('uniqueid');
         $days = (int) $this->option('days');
-        $allCalls = $this->option('all-calls');
-        $incoming = $this->option('incoming');
-        $outgoing = $this->option('outgoing');
+        $callTypes = $this->option('call-type') ?? [];
+        $statuses = $this->option('status') ?? [];
+        $hasFilters = !empty($callTypes) || !empty($statuses);
         
         // Validaciones
         if ($uniqueid) {
             $this->info("📞 Buscando llamada con Unique ID: {$uniqueid}...");
-        } elseif ($caller) {
-            $typeText = $allCalls ? 'todas las llamadas' : ($incoming ? 'llamadas entrantes' : ($outgoing ? 'llamadas salientes' : 'llamadas contestadas'));
-            $this->info("📞 Buscando {$typeText} del anexo {$caller} en los últimos {$days} días...");
+        } elseif ($caller || $hasFilters) {
+            $filterParts = [];
+            if (!empty($callTypes)) {
+                $filterParts[] = 'Tipo: ' . implode(', ', array_map('ucfirst', $callTypes));
+            }
+            if (!empty($statuses)) {
+                $statusLabels = array_map(function($s) {
+                    return match($s) {
+                        'no-answer' => 'No Answer',
+                        default => ucfirst($s)
+                    };
+                }, $statuses);
+                $filterParts[] = 'Estado: ' . implode(', ', $statusLabels);
+            }
+            $filterText = !empty($filterParts) ? ' (' . implode(' | ', $filterParts) . ')' : '';
+            $callerText = $caller ? "del anexo {$caller} " : "";
+            $this->info("📞 Buscando llamadas {$callerText}en los últimos {$days} días{$filterText}...");
         } else {
             $this->info("📞 Obteniendo CDR (1 registro reciente)...");
         }
         $this->newLine();
 
-        // Calcular fechas si se especifica un anexo
+        // Determinar cantidad de registros según los filtros
+        $numRecords = 1; // Por defecto solo 1 registro
+        if ($uniqueid) {
+            $numRecords = 1000;
+        } elseif ($hasFilters) {
+            $numRecords = 5000; // Más registros si hay filtros
+        } elseif ($caller) {
+            $numRecords = 100;
+        }
+        
         $params = [
             'format' => 'json',
-            'numRecords' => $uniqueid ? 1000 : ($caller && ($allCalls || $incoming || $outgoing) ? 5000 : ($caller ? 100 : 1)), // Más registros para búsqueda completa
+            'numRecords' => $numRecords,
             'minDur' => 0
         ];
         
-        // Solo usar el parámetro caller de la API si NO estamos buscando todas las llamadas
-        if ($caller && !$allCalls && !$incoming && !$outgoing) {
+        // Solo usar el parámetro caller de la API si NO estamos usando filtros (para mayor flexibilidad)
+        if ($caller && !$hasFilters) {
             $params['caller'] = $caller;
         }
         
+        // Agregar fechas para limitar búsqueda solo cuando hay caller (la PBX puede tener fecha incorrecta)
         if ($caller) {
-            // Agregar fechas para limitar búsqueda
             if ($days > 0) {
                 $endDate = now();
                 $startDate = now()->subDays($days);
@@ -425,17 +457,31 @@ class TestApiCommands extends Command
             $this->displaySingleCall($found);
             return 0;
         }
-        // Si se especificó caller con opciones de filtro
-        elseif ($caller && ($allCalls || $incoming || $outgoing)) {
-            $filteredCalls = $this->filterCallsByType($response['cdr_root'], $caller, $allCalls, $incoming, $outgoing);
+        // Si se especificó caller con filtros
+        elseif ($caller && $hasFilters) {
+            $filteredCalls = $this->filterCallsByType($response['cdr_root'], $caller, $callTypes, $statuses);
             
             if (empty($filteredCalls)) {
-                $typeText = $allCalls ? 'llamadas' : ($incoming ? 'llamadas entrantes' : ($outgoing ? 'llamadas salientes' : 'llamadas'));
-                $this->warn("⚠️ No se encontraron {$typeText} para el anexo {$caller} en los últimos {$days} días.");
+                $this->warn("⚠️ No se encontraron llamadas que cumplan los criterios para el anexo {$caller} en los últimos {$days} días.");
                 return 0;
             }
             
-            $this->displayMultipleCalls($filteredCalls, $caller, $days);
+            $this->displayMultipleCalls($filteredCalls, $caller, $days, $callTypes, $statuses);
+            return 0;
+        }
+        // Si hay filtros sin caller específico
+        elseif ($hasFilters) {
+            $filteredCalls = $this->filterCallsByType($response['cdr_root'], null, $callTypes, $statuses);
+            
+            if (empty($filteredCalls)) {
+                $filterDesc = [];
+                if (!empty($callTypes)) $filterDesc[] = 'tipo: ' . implode(', ', $callTypes);
+                if (!empty($statuses)) $filterDesc[] = 'estado: ' . implode(', ', $statuses);
+                $this->warn("⚠️ No se encontraron llamadas con " . implode(' y ', $filterDesc) . " en los últimos {$days} días.");
+                return 0;
+            }
+            
+            $this->displayMultipleCalls($filteredCalls, null, $days, $callTypes, $statuses);
             return 0;
         }
         // Si se especificó caller sin filtros, mostrar solo la última contestada
@@ -461,63 +507,145 @@ class TestApiCommands extends Command
     }
 
     /**
-     * Filtrar llamadas por tipo (entrantes, salientes, todas)
+     * Filtrar llamadas por tipo (inbound, outbound, internal, external) y estado
+     * IMPORTANTE: Usa el campo 'userfield' de la API de Grandstream que contiene la clasificación real:
+     * - "Inbound" = Llamadas entrantes desde afuera
+     * - "Outbound" = Llamadas salientes hacia afuera  
+     * - "Internal" = Llamadas internas entre extensiones
+     * - "" (vacío) = Registros secundarios o sin clasificar
      */
-    private function filterCallsByType(array $calls, string $extension, bool $allCalls, bool $incoming, bool $outgoing): array
+    private function filterCallsByType(array $calls, ?string $extension, array $callTypes, array $statuses): array
     {
-        if ($allCalls) {
-            // Todas las llamadas donde el anexo está involucrado como origen o destino
-            return array_filter($calls, function($call) use ($extension) {
-                $src = $call['src'] ?? '';
-                $dst = $call['dst'] ?? '';
-                $dstanswer = $call['dstanswer'] ?? '';
-                $channelExt = $call['channel_ext'] ?? '';
-                $dstChannelExt = $call['dstchannel_ext'] ?? '';
-                
-                return ($src === $extension || $dst === $extension || $dstanswer === $extension || 
-                        $channelExt === $extension || $dstChannelExt === $extension);
-            });
-        }
-        
-        if ($incoming) {
-            // Llamadas entrantes: el anexo es el destino o quien responde
-            return array_filter($calls, function($call) use ($extension) {
-                $src = $call['src'] ?? '';
-                $dst = $call['dst'] ?? '';
-                $dstanswer = $call['dstanswer'] ?? '';
-                $dstChannelExt = $call['dstchannel_ext'] ?? '';
-                
-                return (($dst === $extension || $dstanswer === $extension || $dstChannelExt === $extension) && $src !== $extension);
-            });
-        }
-        
-        if ($outgoing) {
-            // Llamadas salientes: el anexo es el origen
-            return array_filter($calls, function($call) use ($extension) {
-                $src = $call['src'] ?? '';
-                $channelExt = $call['channel_ext'] ?? '';
-                
-                return ($src === $extension || $channelExt === $extension);
-            });
-        }
-        
-        // Por defecto, todas las llamadas
-        return array_filter($calls, function($call) use ($extension) {
+        return array_filter($calls, function($call) use ($extension, $callTypes, $statuses) {
             $src = $call['src'] ?? '';
             $dst = $call['dst'] ?? '';
             $dstanswer = $call['dstanswer'] ?? '';
             $channelExt = $call['channel_ext'] ?? '';
             $dstChannelExt = $call['dstchannel_ext'] ?? '';
+            $disposition = $call['disposition'] ?? '';
+            $userfield = $call['userfield'] ?? ''; // Campo clave de clasificación UCM
             
-            return ($src === $extension || $dst === $extension || $dstanswer === $extension || 
-                    $channelExt === $extension || $dstChannelExt === $extension);
+            // Verificar que la llamada involucra al anexo (solo si se especificó extensión)
+            if ($extension !== null) {
+                $involvesExtension = ($src === $extension || $dst === $extension || $dstanswer === $extension || 
+                                      $channelExt === $extension || $dstChannelExt === $extension);
+                
+                if (!$involvesExtension) {
+                    return false;
+                }
+            }
+            
+            // Filtrar por Call Type si se especificó
+            if (!empty($callTypes)) {
+                $matchesCallType = false;
+                
+                foreach ($callTypes as $type) {
+                    // Primero intentar usar userfield de la API (método preferido y preciso)
+                    if ($userfield !== '') {
+                        switch ($type) {
+                            case 'inbound':
+                                if (strtolower($userfield) === 'inbound') {
+                                    $matchesCallType = true;
+                                }
+                                break;
+                            case 'outbound':
+                                if (strtolower($userfield) === 'outbound') {
+                                    $matchesCallType = true;
+                                }
+                                break;
+                            case 'internal':
+                                if (strtolower($userfield) === 'internal') {
+                                    $matchesCallType = true;
+                                }
+                                break;
+                            case 'external':
+                                // External = Inbound + Outbound (cualquier llamada con número externo)
+                                if (in_array(strtolower($userfield), ['inbound', 'outbound'])) {
+                                    $matchesCallType = true;
+                                }
+                                break;
+                        }
+                    } else {
+                        // Fallback: si userfield está vacío, usar lógica basada en dígitos
+                        switch ($type) {
+                            case 'inbound':
+                                $dstIsExtension = ($dst === $extension || $dstanswer === $extension || $dstChannelExt === $extension);
+                                $srcIsExternal = !$this->isInternalExtension($src);
+                                if ($dstIsExtension && $srcIsExternal && $src !== $extension) {
+                                    $matchesCallType = true;
+                                }
+                                break;
+                            case 'outbound':
+                                $srcIsExtension = ($src === $extension || $channelExt === $extension);
+                                $dstIsExternal = !$this->isInternalExtension($dst);
+                                if ($srcIsExtension && $dstIsExternal) {
+                                    $matchesCallType = true;
+                                }
+                                break;
+                            case 'internal':
+                                $srcIsInternal = $this->isInternalExtension($src);
+                                $dstIsInternal = $this->isInternalExtension($dst);
+                                if ($srcIsInternal && $dstIsInternal) {
+                                    $matchesCallType = true;
+                                }
+                                break;
+                            case 'external':
+                                $srcIsInternal = $this->isInternalExtension($src);
+                                $dstIsInternal = $this->isInternalExtension($dst);
+                                if (!($srcIsInternal && $dstIsInternal)) {
+                                    $matchesCallType = true;
+                                }
+                                break;
+                        }
+                    }
+                }
+                
+                if (!$matchesCallType) {
+                    return false;
+                }
+            }
+            
+            // Filtrar por Status si se especificó
+            if (!empty($statuses)) {
+                $matchesStatus = false;
+                
+                foreach ($statuses as $status) {
+                    $checkStatus = match($status) {
+                        'answered' => 'ANSWERED',
+                        'no-answer' => 'NO ANSWER',
+                        'busy' => 'BUSY',
+                        'failed' => 'FAILED',
+                        default => strtoupper($status)
+                    };
+                    
+                    if ($disposition === $checkStatus) {
+                        $matchesStatus = true;
+                        break;
+                    }
+                }
+                
+                if (!$matchesStatus) {
+                    return false;
+                }
+            }
+            
+            return true;
         });
+    }
+    
+    /**
+     * Determinar si un número es una extensión interna (3-4 dígitos)
+     */
+    private function isInternalExtension(string $number): bool
+    {
+        // Extensiones internas típicamente son de 3-4 dígitos
+        return preg_match('/^\d{3,4}$/', $number);
     }
 
     /**
      * Mostrar múltiples llamadas en formato tabla resumida
      */
-    private function displayMultipleCalls(array $calls, string $extension, int $days): void
+    private function displayMultipleCalls(array $calls, ?string $extension, int $days, array $callTypes = [], array $statuses = []): void
     {
         $totalCalls = count($calls);
         $answered = array_filter($calls, fn($call) => ($call['disposition'] ?? '') === 'ANSWERED');
@@ -525,7 +653,36 @@ class TestApiCommands extends Command
         $totalDuration = array_sum(array_column($calls, 'duration'));
         $totalBillable = array_sum(array_map(fn($call) => $call['billsec'] ?? 0, $answered));
         
-        $this->info("✅ Se encontraron {$totalCalls} llamadas para el anexo {$extension} en los últimos {$days} días:");
+        // Construir texto de filtros aplicados
+        $filterInfo = [];
+        if (!empty($callTypes)) {
+            $typeLabels = array_map(function($t) {
+                return match($t) {
+                    'inbound' => 'Entrantes',
+                    'outbound' => 'Salientes',
+                    'internal' => 'Internas',
+                    'external' => 'Externas',
+                    default => ucfirst($t)
+                };
+            }, $callTypes);
+            $filterInfo[] = 'Tipo: ' . implode(', ', $typeLabels);
+        }
+        if (!empty($statuses)) {
+            $statusLabels = array_map(function($s) {
+                return match($s) {
+                    'answered' => 'Contestadas',
+                    'no-answer' => 'Sin respuesta',
+                    'busy' => 'Ocupado',
+                    'failed' => 'Fallidas',
+                    default => ucfirst($s)
+                };
+            }, $statuses);
+            $filterInfo[] = 'Estado: ' . implode(', ', $statusLabels);
+        }
+        $filterText = !empty($filterInfo) ? ' [Filtros: ' . implode(' | ', $filterInfo) . ']' : '';
+        
+        $extensionText = $extension ? " para el anexo {$extension}" : "";
+        $this->info("✅ Se encontraron {$totalCalls} llamadas{$extensionText} en los últimos {$days} días{$filterText}:");
         $this->info("📞 Llamadas contestadas: {$totalAnswered}");
         $this->info("⏱️ Duración total: " . gmdate('H:i:s', $totalDuration));
         $this->info("💰 Tiempo facturable: " . gmdate('H:i:s', $totalBillable));
@@ -594,7 +751,7 @@ class TestApiCommands extends Command
         if ($totalCalls > 5) {
             $this->newLine();
             $this->info("💡 Mostrando resumen. Para ver detalles completos de una llamada específica, usa:");
-            $this->info("   php artisan api:test --pbx={$this->activePbx->id} --action=cdrapi --uniqueid=<UNIQUE_ID>");
+            $this->info("   php artisan api:test --pbx={$this->getActivePbxId()} --action=cdrapi --uniqueid=<UNIQUE_ID>");
         }
     }
 
@@ -3131,13 +3288,15 @@ class TestApiCommands extends Command
         $this->info("✓ Analizando " . count($calls) . " registros recientes de la API");
         $this->newLine();
 
-        // Analizar action_type
+        // Analizar action_type y userfield
         $actionTypes = [];
         $actionOwners = [];
         $lastApps = [];
         $lastDatas = [];
         $dispositions = [];
+        $userfields = [];  // Campo clave para clasificación UCM
         $examplesByType = [];
+        $examplesByUserfield = [];
 
         foreach ($calls as $call) {
             // Action Type
@@ -3165,6 +3324,15 @@ class TestApiCommands extends Command
             // Disposition
             $disp = $call['disposition'] ?? 'NO_DEFINIDO';
             $dispositions[$disp] = ($dispositions[$disp] ?? 0) + 1;
+            
+            // Userfield - Campo clave para clasificación UCM (Inbound, Outbound, Internal)
+            $uf = $call['userfield'] ?? '';
+            $ufKey = $uf === '' ? 'VACIO' : $uf;
+            if (!isset($userfields[$ufKey])) {
+                $userfields[$ufKey] = 0;
+                $examplesByUserfield[$ufKey] = $call;
+            }
+            $userfields[$ufKey]++;
         }
 
         // Ordenar todos por cantidad
@@ -3173,6 +3341,58 @@ class TestApiCommands extends Command
         arsort($lastApps);
         arsort($lastDatas);
         arsort($dispositions);
+        arsort($userfields);
+        
+        // ========== MOSTRAR USERFIELD (EL MÁS IMPORTANTE) ==========
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=green;options=bold>🎯 USERFIELD (Clasificación UCM - CAMPO CLAVE PARA COBRO)</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->newLine();
+        
+        $this->line("  <fg=white;options=bold>USERFIELD = Clasificación de la llamada según UCM:</>");
+        $this->line("  <fg=green>• Inbound</>  = Llamadas ENTRANTES desde afuera (NO COBRAR)");
+        $this->line("  <fg=yellow>• Outbound</> = Llamadas SALIENTES hacia afuera (COBRAR si contesta)");
+        $this->line("  <fg=cyan>• Internal</> = Llamadas INTERNAS entre extensiones (NO COBRAR)");
+        $this->line("  <fg=gray>• VACIO</>    = Registros secundarios o sin clasificar");
+        $this->newLine();
+        
+        $this->line(sprintf(
+            "  <fg=white;options=bold>%-20s %-12s %-10s %-40s</>",
+            'USERFIELD', 'CANTIDAD', '%', 'DESCRIPCIÓN'
+        ));
+        $this->line("  " . str_repeat("─", 85));
+        
+        $totalApiCalls = count($calls);
+        foreach ($userfields as $uf => $count) {
+            $percentage = round(($count / $totalApiCalls) * 100, 1);
+            
+            $color = match($uf) {
+                'Inbound' => 'green',
+                'Outbound' => 'yellow',
+                'Internal' => 'cyan',
+                default => 'gray'
+            };
+            
+            $description = match($uf) {
+                'Inbound' => '⬇️  Entrantes (externas hacia nosotros)',
+                'Outbound' => '⬆️  Salientes (nosotros hacia afuera)',
+                'Internal' => '🔄 Internas (entre extensiones)',
+                'VACIO' => '❓ Sin clasificar (registros secundarios)',
+                default => 'Otro'
+            };
+            
+            $this->line(sprintf(
+                "  <fg={$color}>%-20s %-12d %-10s %-40s</>",
+                $uf,
+                $count,
+                $percentage . '%',
+                $description
+            ));
+        }
+        
+        $this->newLine();
+        $this->line("  <fg=yellow>💡 PARA COBRAR:</>  Solo las llamadas <fg=yellow;options=bold>Outbound</> con <fg=green>disposition=ANSWERED</>");
+        $this->line("  <fg=gray>💡 NO COBRAR:</>    Inbound, Internal, y registros sin userfield");
 
         // ========== MOSTRAR ACTION_TYPE ==========
         $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
@@ -3336,6 +3556,664 @@ class TestApiCommands extends Command
             'Park' => 'Llamada estacionada',
             default => 'Tipo no documentado'
         };
+    }
+
+    /**
+     * Analizar llamadas para determinar cuáles son cobrables
+     * Usa la clase CallBillingAnalyzer para hacer el análisis
+     */
+    private function analyzeBilling(): int
+    {
+        $this->info("💰 Analizando llamadas para determinar facturación...");
+        $this->newLine();
+
+        // Obtener registros CDR de la API
+        $this->info("📥 Consultando API para obtener registros CDR...");
+        
+        $params = [
+            'format' => 'json',
+            'numRecords' => 500,
+            'minDur' => 0
+        ];
+
+        $response = $this->connectApi('cdrapi', $params, 120);
+
+        if (!isset($response['cdr_root']) || empty($response['cdr_root'])) {
+            $this->warn("⚠️ No se encontraron registros CDR.");
+            return 0;
+        }
+
+        $calls = $response['cdr_root'];
+        $totalCalls = count($calls);
+        $this->info("✓ Obtenidos {$totalCalls} registros CDR de la API");
+        $this->newLine();
+
+        // Usar el analizador de facturación
+        $analyzer = new \App\Services\CallBillingAnalyzer();
+        $stats = $analyzer->analyzeMultiple($calls);
+
+        // ========== MOSTRAR RESULTADOS ==========
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=green;options=bold>💰 ANÁLISIS DE FACTURACIÓN DE LLAMADAS</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->newLine();
+
+        // Resumen general
+        $this->line("<fg=white;options=bold>📊 RESUMEN GENERAL:</>");
+        $this->line("  Total de llamadas analizadas: <fg=yellow>{$stats['total']}</>");
+        $this->line("  <fg=green>✓ Llamadas COBRABLES:   {$stats['billable']}</>");
+        $this->line("  <fg=gray>✗ Llamadas NO cobrables: {$stats['notBillable']}</>");
+        
+        $billableMinutes = round($stats['totalBillableSeconds'] / 60, 2);
+        $this->line("  <fg=yellow>⏱ Tiempo facturable:    {$stats['totalBillableSeconds']} seg ({$billableMinutes} min)</>");
+        $this->newLine();
+
+        // Por tipo de llamada
+        $this->line("<fg=white;options=bold>📞 POR TIPO DE LLAMADA:</>");
+        $this->line(sprintf("  <fg=green>Inbound (entrantes):</> %d <fg=gray>(NO se cobran - nos llaman a nosotros)</>", $stats['byType']['inbound']));
+        $this->line(sprintf("  <fg=yellow>Outbound (salientes):</> %d <fg=gray>(SE COBRAN si contestan)</>", $stats['byType']['outbound']));
+        $this->line(sprintf("  <fg=cyan>Internal (internas):</> %d <fg=gray>(NO se cobran - entre extensiones)</>", $stats['byType']['internal']));
+        if ($stats['byType']['unknown'] > 0) {
+            $this->line(sprintf("  <fg=gray>Sin clasificar:</> %d", $stats['byType']['unknown']));
+        }
+        $this->newLine();
+
+        // Por disposición
+        $this->line("<fg=white;options=bold>📊 POR ESTADO DE LLAMADA:</>");
+        foreach ($stats['byDisposition'] as $disp => $count) {
+            if ($count > 0) {
+                $color = $disp === 'ANSWERED' ? 'green' : 'gray';
+                $this->line(sprintf("  <fg={$color}>%s:</> %d", $disp, $count));
+            }
+        }
+        $this->newLine();
+
+        // Detalle de llamadas cobrables
+        if (!empty($stats['billableCalls'])) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            $this->line("<fg=green;options=bold>💵 LLAMADAS COBRABLES (DETALLE)</>");
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            $this->newLine();
+
+            $this->line(sprintf(
+                "  <fg=white;options=bold>%-15s %-15s %-15s %-12s %-10s</>",
+                'ANEXO REAL', 'SRC REPORTADO', 'DESTINO', 'DURACIÓN', 'USERFIELD'
+            ));
+            $this->line("  " . str_repeat("─", 75));
+
+            foreach ($stats['billableCalls'] as $call) {
+                $duration = gmdate('i:s', $call['billableSeconds']);
+                $this->line(sprintf(
+                    "  <fg=green>%-15s %-15s %-15s %-12s %-10s</>",
+                    $call['realExtension'] ?? $call['channelExt'],
+                    $call['reportedSrc'],
+                    $call['destination'],
+                    $duration,
+                    $call['userfield']
+                ));
+            }
+            $this->newLine();
+        }
+
+        // Muestra ejemplos de por qué no son cobrables
+        if (!empty($stats['sampleNonBillable'])) {
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            $this->line("<fg=gray;options=bold>📋 EJEMPLOS DE LLAMADAS NO COBRABLES (motivo)</>");
+            $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+            $this->newLine();
+
+            foreach ($stats['sampleNonBillable'] as $call) {
+                $this->line(sprintf(
+                    "  <fg=gray>%s → %s | %s | Motivo: %s</>",
+                    $call['realExtension'] ?? $call['reportedSrc'],
+                    $call['destination'],
+                    $call['disposition'],
+                    $call['reason']
+                ));
+            }
+            $this->newLine();
+        }
+
+        // Explicación final
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📌 CRITERIOS DE FACTURACIÓN:</>");
+        $this->line("  <fg=white>Una llamada es COBRABLE cuando:</>");
+        $this->line("    1. El ORIGEN es un anexo INTERNO de la empresa (ej: 1760, 4004)");
+        $this->line("    2. El DESTINO es un número EXTERNO (7+ dígitos)");
+        $this->line("    3. La llamada fue CONTESTADA (disposition = ANSWERED)");
+        $this->line("    4. Sale por un TRUNK hacia afuera (dst_trunk_name no vacío)");
+        $this->newLine();
+        $this->line("  <fg=gray>NO se cobran:</>");
+        $this->line("    - Llamadas ENTRANTES (alguien de afuera nos llama)");
+        $this->line("    - Llamadas INTERNAS (entre extensiones)");
+        $this->line("    - Llamadas NO contestadas");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+
+        return 0;
+    }
+
+    /**
+     * Cuestionario interactivo para analizar CDR
+     * Permite al usuario elegir filtros y opciones de forma interactiva
+     */
+    private function interactiveCdrApi(): int
+    {
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=yellow;options=bold>📞 CUESTIONARIO INTERACTIVO CDR</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->newLine();
+
+        // Menú principal
+        while (true) {
+            $this->line("<fg=white;options=bold>¿Qué deseas hacer?</>");
+            $this->newLine();
+            $this->line("  <fg=cyan>[1]</> Ver resumen de llamadas (estadísticas)");
+            $this->line("  <fg=cyan>[2]</> Buscar llamadas con filtros");
+            $this->line("  <fg=cyan>[3]</> Analizar llamadas cobrables");
+            $this->line("  <fg=cyan>[4]</> Ver llamadas de un anexo específico");
+            $this->line("  <fg=cyan>[5]</> Ver rutas salientes configuradas");
+            $this->line("  <fg=cyan>[6]</> Exportar datos");
+            $this->line("  <fg=cyan>[0]</> Salir");
+            $this->newLine();
+
+            $option = $this->ask('Selecciona una opción');
+
+            switch ($option) {
+                case '1':
+                    $this->cdrShowSummary();
+                    break;
+                case '2':
+                    $this->cdrSearchWithFilters();
+                    break;
+                case '3':
+                    return $this->analyzeBilling();
+                case '4':
+                    $this->cdrSearchByExtension();
+                    break;
+                case '5':
+                    return $this->testListOutboundRoute();
+                case '6':
+                    $this->cdrExportData();
+                    break;
+                case '0':
+                case 'q':
+                case 'exit':
+                    $this->info("👋 ¡Hasta luego!");
+                    return 0;
+                default:
+                    $this->warn("⚠️ Opción no válida. Intenta de nuevo.");
+            }
+
+            $this->newLine();
+            if (!$this->confirm('¿Deseas realizar otra consulta?', true)) {
+                $this->info("👋 ¡Hasta luego!");
+                return 0;
+            }
+            $this->newLine();
+        }
+    }
+
+    /**
+     * Mostrar resumen de llamadas
+     */
+    private function cdrShowSummary(): void
+    {
+        $this->info("📊 Obteniendo resumen de llamadas...");
+        
+        $numRecords = $this->choice(
+            '¿Cuántos registros analizar?',
+            ['100' => '100 (rápido)', '500' => '500 (normal)', '1000' => '1000 (más datos)', '5000' => '5000 (completo)'],
+            '500'
+        );
+
+        $response = $this->connectApi('cdrapi', [
+            'format' => 'json',
+            'numRecords' => (int)$numRecords,
+            'minDur' => 0
+        ], 120);
+
+        $calls = $response['cdr_root'] ?? [];
+        if (empty($calls)) {
+            $this->warn("⚠️ No se encontraron registros.");
+            return;
+        }
+
+        $this->newLine();
+        $totalCalls = count($calls);
+        
+        // Estadísticas por userfield
+        $byUserfield = [];
+        $byDisposition = [];
+        $byRoute = [];
+        $totalBillsec = 0;
+        $answeredBillsec = 0;
+
+        foreach ($calls as $call) {
+            $uf = $call['userfield'] ?? 'Sin clasificar';
+            $uf = $uf === '' ? 'Sin clasificar' : $uf;
+            $byUserfield[$uf] = ($byUserfield[$uf] ?? 0) + 1;
+
+            $disp = $call['disposition'] ?? 'UNKNOWN';
+            $byDisposition[$disp] = ($byDisposition[$disp] ?? 0) + 1;
+
+            // Extraer ruta del dcontext
+            if (preg_match('/outbound-route-(\d+)/', $call['dcontext'] ?? '', $m)) {
+                $routeId = 'Ruta #' . $m[1];
+                $byRoute[$routeId] = ($byRoute[$routeId] ?? 0) + 1;
+            }
+
+            $totalBillsec += (int)($call['billsec'] ?? 0);
+            if (($call['disposition'] ?? '') === 'ANSWERED') {
+                $answeredBillsec += (int)($call['billsec'] ?? 0);
+            }
+        }
+
+        arsort($byUserfield);
+        arsort($byDisposition);
+        arsort($byRoute);
+
+        // Mostrar
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=green;options=bold>📊 RESUMEN DE {$totalCalls} LLAMADAS</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        
+        // Fechas
+        $dates = array_column($calls, 'start');
+        sort($dates);
+        $this->line("  <fg=white>Período:</> " . reset($dates) . " a " . end($dates));
+        $this->line("  <fg=white>Tiempo total:</> " . gmdate('H:i:s', $totalBillsec) . " ({$totalBillsec} seg)");
+        $this->line("  <fg=white>Tiempo contestado:</> " . gmdate('H:i:s', $answeredBillsec) . " ({$answeredBillsec} seg)");
+        $this->newLine();
+
+        // Por tipo
+        $this->line("<fg=yellow;options=bold>📞 POR TIPO DE LLAMADA (userfield):</>");
+        foreach ($byUserfield as $type => $count) {
+            $pct = round($count / $totalCalls * 100, 1);
+            $color = match($type) {
+                'Inbound' => 'green',
+                'Outbound' => 'yellow',
+                'Internal' => 'cyan',
+                default => 'gray'
+            };
+            $label = match($type) {
+                'Inbound' => '⬇️  Entrantes (no cobrar)',
+                'Outbound' => '⬆️  Salientes (COBRAR)',
+                'Internal' => '🔄 Internas (no cobrar)',
+                default => '❓ ' . $type
+            };
+            $this->line("  <fg={$color}>{$label}:</> {$count} ({$pct}%)");
+        }
+        $this->newLine();
+
+        // Por estado
+        $this->line("<fg=yellow;options=bold>📊 POR ESTADO:</>");
+        foreach ($byDisposition as $disp => $count) {
+            $pct = round($count / $totalCalls * 100, 1);
+            $color = $disp === 'ANSWERED' ? 'green' : 'gray';
+            $this->line("  <fg={$color}>{$disp}:</> {$count} ({$pct}%)");
+        }
+
+        // Por ruta saliente (si hay)
+        if (!empty($byRoute)) {
+            $this->newLine();
+            $this->line("<fg=yellow;options=bold>🚪 POR RUTA SALIENTE:</>");
+            foreach ($byRoute as $route => $count) {
+                $this->line("  <fg=cyan>{$route}:</> {$count}");
+            }
+        }
+    }
+
+    /**
+     * Buscar llamadas con filtros interactivos
+     */
+    private function cdrSearchWithFilters(): void
+    {
+        $this->info("🔍 Configurando filtros de búsqueda...");
+        $this->newLine();
+
+        // Tipo de llamada
+        $callType = $this->choice(
+            '¿Qué tipo de llamada buscar?',
+            [
+                'all' => 'Todas',
+                'inbound' => 'Entrantes (Inbound) - nos llaman desde afuera',
+                'outbound' => 'Salientes (Outbound) - llamamos hacia afuera',
+                'internal' => 'Internas (Internal) - entre extensiones',
+                'billable' => 'Solo COBRABLES (Outbound + Answered)'
+            ],
+            'all'
+        );
+
+        // Estado
+        $status = $this->choice(
+            '¿Qué estado de llamada?',
+            [
+                'all' => 'Todos los estados',
+                'answered' => 'Solo contestadas (Answered)',
+                'no-answer' => 'Solo sin respuesta (No Answer)',
+                'busy' => 'Solo ocupado (Busy)',
+                'failed' => 'Solo fallidas (Failed)'
+            ],
+            'all'
+        );
+
+        // Cantidad de registros
+        $numRecords = $this->choice(
+            '¿Cuántos registros buscar?',
+            ['50' => '50', '100' => '100', '500' => '500', '1000' => '1000'],
+            '100'
+        );
+
+        // Obtener datos
+        $this->info("📥 Consultando API...");
+        $response = $this->connectApi('cdrapi', [
+            'format' => 'json',
+            'numRecords' => (int)$numRecords,
+            'minDur' => 0
+        ], 120);
+
+        $calls = $response['cdr_root'] ?? [];
+        if (empty($calls)) {
+            $this->warn("⚠️ No se encontraron registros.");
+            return;
+        }
+
+        // Aplicar filtros
+        $filtered = array_filter($calls, function($call) use ($callType, $status) {
+            // Filtro por tipo
+            $userfield = strtolower($call['userfield'] ?? '');
+            if ($callType === 'billable') {
+                // Solo Outbound + Answered
+                if ($userfield !== 'outbound') return false;
+                if (($call['disposition'] ?? '') !== 'ANSWERED') return false;
+                return true;
+            } elseif ($callType !== 'all') {
+                if ($userfield !== $callType) return false;
+            }
+
+            // Filtro por estado
+            if ($status !== 'all') {
+                $disp = strtolower($call['disposition'] ?? '');
+                $statusMap = [
+                    'answered' => 'answered',
+                    'no-answer' => 'no answer',
+                    'busy' => 'busy',
+                    'failed' => 'failed'
+                ];
+                if ($disp !== ($statusMap[$status] ?? $status)) return false;
+            }
+
+            return true;
+        });
+
+        $filteredCount = count($filtered);
+        $this->newLine();
+        $this->info("✅ Se encontraron {$filteredCount} llamadas con los filtros aplicados.");
+        
+        if ($filteredCount === 0) {
+            return;
+        }
+
+        // Mostrar resultados
+        $showFormat = $this->choice(
+            '¿Cómo mostrar los resultados?',
+            [
+                'summary' => 'Solo resumen (conteos)',
+                'list' => 'Lista breve (tabla)',
+                'detail' => 'Detalle completo (primeras 10)'
+            ],
+            'list'
+        );
+
+        $this->newLine();
+
+        switch ($showFormat) {
+            case 'summary':
+                $answered = count(array_filter($filtered, fn($c) => ($c['disposition'] ?? '') === 'ANSWERED'));
+                $totalSec = array_sum(array_column($filtered, 'billsec'));
+                $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+                $this->line("  <fg=white>Total llamadas:</> {$filteredCount}");
+                $this->line("  <fg=green>Contestadas:</> {$answered}");
+                $this->line("  <fg=yellow>Tiempo facturable:</> " . gmdate('H:i:s', $totalSec));
+                $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+                break;
+
+            case 'list':
+                $this->line(sprintf(
+                    "  <fg=white;options=bold>%-20s %-12s %-12s %-10s %-10s %-10s</>",
+                    'FECHA', 'ORIGEN', 'DESTINO', 'TIPO', 'ESTADO', 'DURACIÓN'
+                ));
+                $this->line("  " . str_repeat("─", 80));
+                
+                $shown = 0;
+                foreach ($filtered as $call) {
+                    if ($shown++ >= 20) {
+                        $remaining = $filteredCount - 20;
+                        $this->line("  <fg=gray>... y {$remaining} más</>");
+                        break;
+                    }
+                    $duration = gmdate('i:s', $call['billsec'] ?? 0);
+                    $type = $call['userfield'] ?? '-';
+                    $color = match($type) {
+                        'Outbound' => 'yellow',
+                        'Inbound' => 'green',
+                        'Internal' => 'cyan',
+                        default => 'gray'
+                    };
+                    $this->line(sprintf(
+                        "  <fg={$color}>%-20s %-12s %-12s %-10s %-10s %-10s</>",
+                        substr($call['start'] ?? '', 0, 19),
+                        substr($call['src'] ?? '', 0, 11),
+                        substr($call['dst'] ?? '', 0, 11),
+                        $type,
+                        $call['disposition'] ?? '-',
+                        $duration
+                    ));
+                }
+                break;
+
+            case 'detail':
+                $shown = 0;
+                foreach ($filtered as $call) {
+                    if ($shown++ >= 10) break;
+                    $this->displaySingleCall($call, $shown > 1);
+                }
+                break;
+        }
+    }
+
+    /**
+     * Buscar llamadas de un anexo específico
+     */
+    private function cdrSearchByExtension(): void
+    {
+        $extension = $this->ask('Ingresa el número de anexo');
+        
+        if (empty($extension)) {
+            $this->warn("⚠️ Debes ingresar un anexo.");
+            return;
+        }
+
+        $numRecords = $this->choice(
+            '¿Cuántos registros buscar?',
+            ['50' => '50', '100' => '100', '500' => '500', '1000' => '1000'],
+            '100'
+        );
+
+        $this->info("📥 Buscando llamadas del anexo {$extension}...");
+
+        $response = $this->connectApi('cdrapi', [
+            'format' => 'json',
+            'numRecords' => (int)$numRecords,
+            'minDur' => 0
+        ], 120);
+
+        $calls = $response['cdr_root'] ?? [];
+        
+        // Filtrar por extensión
+        $filtered = array_filter($calls, function($call) use ($extension) {
+            return ($call['src'] ?? '') === $extension 
+                || ($call['dst'] ?? '') === $extension
+                || ($call['channel_ext'] ?? '') === $extension
+                || ($call['dstanswer'] ?? '') === $extension;
+        });
+
+        $filteredCount = count($filtered);
+        
+        if ($filteredCount === 0) {
+            $this->warn("⚠️ No se encontraron llamadas para el anexo {$extension}.");
+            return;
+        }
+
+        $this->info("✅ Se encontraron {$filteredCount} llamadas.");
+        $this->newLine();
+
+        // Estadísticas rápidas
+        $outgoing = count(array_filter($filtered, fn($c) => ($c['channel_ext'] ?? '') === $extension));
+        $incoming = $filteredCount - $outgoing;
+        $answered = count(array_filter($filtered, fn($c) => ($c['disposition'] ?? '') === 'ANSWERED'));
+        $totalSec = array_sum(array_column($filtered, 'billsec'));
+
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("<fg=green;options=bold>📊 ESTADÍSTICAS DEL ANEXO {$extension}</>");
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+        $this->line("  <fg=white>Total llamadas:</> {$filteredCount}");
+        $this->line("  <fg=yellow>Salientes (origen):</> {$outgoing}");
+        $this->line("  <fg=green>Entrantes (destino):</> {$incoming}");
+        $this->line("  <fg=white>Contestadas:</> {$answered}");
+        $this->line("  <fg=cyan>Tiempo total:</> " . gmdate('H:i:s', $totalSec));
+        $this->line("<fg=cyan>══════════════════════════════════════════════════════════════════════════════════════════</>");
+
+        // Mostrar lista
+        if ($this->confirm('¿Deseas ver la lista de llamadas?', true)) {
+            $this->newLine();
+            $this->line(sprintf(
+                "  <fg=white;options=bold>%-20s %-12s %-12s %-10s %-10s %-10s</>",
+                'FECHA', 'ORIGEN', 'DESTINO', 'TIPO', 'ESTADO', 'DURACIÓN'
+            ));
+            $this->line("  " . str_repeat("─", 80));
+            
+            $shown = 0;
+            foreach ($filtered as $call) {
+                if ($shown++ >= 30) {
+                    $remaining = $filteredCount - 30;
+                    $this->line("  <fg=gray>... y {$remaining} más</>");
+                    break;
+                }
+                $duration = gmdate('i:s', $call['billsec'] ?? 0);
+                $type = $call['userfield'] ?? '-';
+                $color = ($call['channel_ext'] ?? '') === $extension ? 'yellow' : 'green';
+                $this->line(sprintf(
+                    "  <fg={$color}>%-20s %-12s %-12s %-10s %-10s %-10s</>",
+                    substr($call['start'] ?? '', 0, 19),
+                    $call['src'] ?? '-',
+                    $call['dst'] ?? '-',
+                    $type,
+                    $call['disposition'] ?? '-',
+                    $duration
+                ));
+            }
+        }
+    }
+
+    /**
+     * Exportar datos de CDR
+     */
+    private function cdrExportData(): void
+    {
+        $this->info("📤 Preparando exportación de datos...");
+        $this->newLine();
+
+        // Tipo de llamada
+        $callType = $this->choice(
+            '¿Qué tipo de llamada exportar?',
+            [
+                'all' => 'Todas',
+                'outbound' => 'Solo Salientes (Outbound)',
+                'billable' => 'Solo COBRABLES (Outbound + Answered)'
+            ],
+            'billable'
+        );
+
+        // Formato
+        $format = $this->choice(
+            '¿En qué formato?',
+            [
+                'csv' => 'CSV (para Excel)',
+                'json' => 'JSON'
+            ],
+            'csv'
+        );
+
+        // Cantidad
+        $numRecords = $this->choice(
+            '¿Cuántos registros?',
+            ['100' => '100', '500' => '500', '1000' => '1000', '5000' => '5000'],
+            '500'
+        );
+
+        // Obtener datos
+        $this->info("📥 Consultando API...");
+        $response = $this->connectApi('cdrapi', [
+            'format' => 'json',
+            'numRecords' => (int)$numRecords,
+            'minDur' => 0
+        ], 120);
+
+        $calls = $response['cdr_root'] ?? [];
+        if (empty($calls)) {
+            $this->warn("⚠️ No se encontraron registros.");
+            return;
+        }
+
+        // Filtrar
+        $filtered = array_filter($calls, function($call) use ($callType) {
+            $userfield = strtolower($call['userfield'] ?? '');
+            if ($callType === 'billable') {
+                return $userfield === 'outbound' && ($call['disposition'] ?? '') === 'ANSWERED';
+            } elseif ($callType === 'outbound') {
+                return $userfield === 'outbound';
+            }
+            return true;
+        });
+
+        if (empty($filtered)) {
+            $this->warn("⚠️ No hay llamadas que cumplan los criterios.");
+            return;
+        }
+
+        // Generar archivo
+        $timestamp = date('Y-m-d_H-i-s');
+        $filename = "cdr_export_{$callType}_{$timestamp}.{$format}";
+        $filepath = storage_path("app/{$filename}");
+
+        if ($format === 'csv') {
+            $fp = fopen($filepath, 'w');
+            // Encabezados
+            fputcsv($fp, ['Fecha', 'Origen', 'Destino', 'Tipo', 'Estado', 'Duración (seg)', 'Tiempo Cobrable', 'Canal', 'Trunk']);
+            
+            foreach ($filtered as $call) {
+                fputcsv($fp, [
+                    $call['start'] ?? '',
+                    $call['src'] ?? '',
+                    $call['dst'] ?? '',
+                    $call['userfield'] ?? '',
+                    $call['disposition'] ?? '',
+                    $call['duration'] ?? 0,
+                    $call['billsec'] ?? 0,
+                    $call['channel'] ?? '',
+                    $call['dst_trunk_name'] ?? ''
+                ]);
+            }
+            fclose($fp);
+        } else {
+            file_put_contents($filepath, json_encode($filtered, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+        }
+
+        $count = count($filtered);
+        $this->newLine();
+        $this->info("✅ Exportados {$count} registros a:");
+        $this->line("   <fg=cyan>{$filepath}</>");
     }
 }
 

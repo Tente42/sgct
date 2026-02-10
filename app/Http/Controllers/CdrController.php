@@ -25,10 +25,11 @@ class CdrController extends Controller
         $fechaFin = $request->input('fecha_fin', Carbon::now()->format('Y-m-d'));
         $anexo = $request->input('anexo');
         $titulo = $request->input('titulo', 'Reporte de Llamadas');
+        $tipoLlamada = $request->input('tipo_llamada', 'all');
         $sortBy = $this->validateSort($request->input('sort', 'start_time'));
         $sortDir = $request->input('dir') === 'asc' ? 'asc' : 'desc';
 
-        $query = $this->buildCallQuery($fechaInicio, $fechaFin, $anexo);
+        $query = $this->buildCallQuery($fechaInicio, $fechaFin, $anexo, $tipoLlamada === 'all' ? null : $tipoLlamada);
 
         // Gráfico
         $datosGrafico = (clone $query)
@@ -114,9 +115,10 @@ class CdrController extends Controller
         $fechaInicio = $request->input('fecha_inicio', Carbon::now()->format('Y-m-d'));
         $fechaFin = $request->input('fecha_fin', Carbon::now()->format('Y-m-d'));
         $anexo = $request->input('anexo');
+        $tipoLlamada = $request->input('tipo_llamada', 'all');
         $limitePDF = 500;
 
-        $query = $this->buildCallQuery($fechaInicio, $fechaFin, $anexo)
+        $query = $this->buildCallQuery($fechaInicio, $fechaFin, $anexo, $tipoLlamada === 'all' ? null : $tipoLlamada)
             ->where('disposition', 'LIKE', '%ANSWERED%');
 
         $totalRegistros = (clone $query)->count();
@@ -126,7 +128,7 @@ class CdrController extends Controller
 
         // Calcular costo total
         $totalPagar = 0;
-        $this->buildCallQuery($fechaInicio, $fechaFin, $anexo)
+        $this->buildCallQuery($fechaInicio, $fechaFin, $anexo, $tipoLlamada === 'all' ? null : $tipoLlamada)
             ->where('disposition', 'LIKE', '%ANSWERED%')
             ->chunk(500, fn($chunk) => $totalPagar += $chunk->sum(fn($c) => $c->cost));
 
@@ -135,6 +137,7 @@ class CdrController extends Controller
             'fechaInicio' => $fechaInicio,
             'fechaFin' => $fechaFin,
             'anexo' => $anexo,
+            'tipoLlamada' => $tipoLlamada,
             'totalLlamadas' => $totales->total ?? 0,
             'totalPagar' => $totalPagar,
             'minutosFacturables' => ceil(($totales->segundos ?? 0) / 60),
@@ -159,7 +162,7 @@ class CdrController extends Controller
         }
 
         return Excel::download(
-            new CallsExport($request->only(['fecha_inicio', 'fecha_fin', 'anexo'])),
+            new CallsExport($request->only(['fecha_inicio', 'fecha_fin', 'anexo', 'tipo_llamada'])),
             'reporte_' . date('Y-m-d') . '.xlsx'
         );
     }
@@ -204,10 +207,30 @@ class CdrController extends Controller
 
     // ========== MÉTODOS PRIVADOS ==========
 
-    private function buildCallQuery(string $fechaInicio, string $fechaFin, ?string $anexo)
+    private function buildCallQuery(string $fechaInicio, string $fechaFin, ?string $anexo, ?string $tipoLlamada = null)
     {
         return Call::whereBetween('start_time', ["{$fechaInicio} 00:00:00", "{$fechaFin} 23:59:59"])
-            ->when($anexo, fn($q) => $q->where('source', $anexo));
+            ->when($anexo, fn($q) => $q->where('source', $anexo))
+            ->when($tipoLlamada === 'internal', fn($q) => $q->where(function($query) {
+                // Internas: Llamadas originadas por anexos (Internal + Outbound)
+                $query->whereIn('userfield', ['Internal', 'Outbound'])
+                      ->orWhere(function($q2) {
+                          // Fallback para registros sin userfield: origen es anexo (3-4 dígitos)
+                          $q2->where(function($q3) {
+                              $q3->whereNull('userfield')->orWhere('userfield', '');
+                          })->whereRaw("source REGEXP '^[0-9]{3,4}$'");
+                      });
+            }))
+            ->when($tipoLlamada === 'external', fn($q) => $q->where(function($query) {
+                // Externas: Llamadas entrantes desde afuera (Inbound)
+                $query->where('userfield', 'Inbound')
+                      ->orWhere(function($q2) {
+                          // Fallback para registros sin userfield: origen NO es anexo
+                          $q2->where(function($q3) {
+                              $q3->whereNull('userfield')->orWhere('userfield', '');
+                          })->whereRaw("source NOT REGEXP '^[0-9]{3,4}$'");
+                      });
+            }));
     }
 
     private function validateSort(string $sort): string
@@ -249,6 +272,7 @@ class CdrController extends Controller
 
         return "CASE 
             WHEN billsec <= 3 THEN 0
+            WHEN userfield != 'Outbound' OR userfield IS NULL THEN 0
             WHEN destination REGEXP '^[0-9]{3,4}$' THEN 0
             WHEN destination REGEXP '^800' THEN 0
             WHEN destination REGEXP '^9[0-9]{8}$' THEN CEIL(billsec/60) * {$mobile}
