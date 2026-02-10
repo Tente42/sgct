@@ -52,6 +52,7 @@ class Call extends Model
         'channel',        // Canal de origen
         'dst_channel',    // Canal de destino
         'src_trunk_name', // Nombre del trunk de origen
+        'userfield',      // Clasificación UCM: Inbound, Outbound, Internal
         'recording_file', // Archivo de grabacion (si existe)
     ];
 
@@ -102,6 +103,12 @@ class Call extends Model
     {
         // Si no hay tiempo facturado o dura 3 segundos o menos, no hay costo
         if ($this->billsec <= 3) {
+            return 0;
+        }
+
+        // Solo cobrar llamadas Outbound (desde extensión interna hacia afuera)
+        // Las llamadas Inbound e Internal NO se cobran
+        if ($this->userfield !== 'Outbound') {
             return 0;
         }
 

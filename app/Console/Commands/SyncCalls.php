@@ -183,6 +183,7 @@ class SyncCalls extends Command
             'src_trunk_name' => null,
             'caller_name' => null,
             'recording_file' => null,
+            'userfield' => null,
         ];
 
         foreach ($segments as $seg) {
@@ -203,6 +204,9 @@ class SyncCalls extends Command
             $data['channel'] ??= $seg['channel'] ?? null;
             $data['dst_channel'] ??= $seg['dstchannel'] ?? null;
             $data['src_trunk_name'] ??= $seg['src_trunk_name'] ?? null;
+            
+            // Capturar userfield (clasificación UCM: Inbound, Outbound, Internal)
+            $data['userfield'] ??= $seg['userfield'] ?? null;
             
             // Capturar answer_time si existe
             if (!empty($seg['answer']) && $seg['answer'] !== '0000-00-00 00:00:00') {

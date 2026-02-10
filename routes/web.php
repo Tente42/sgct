@@ -68,7 +68,14 @@ Route::middleware(['auth', 'admin'])->prefix('usuarios')->name('users.')->group(
     Route::get('/{user}/editar', [UserController::class, 'edit'])->name('edit');
     Route::put('/{user}', [UserController::class, 'update'])->name('update');
     Route::delete('/{user}', [UserController::class, 'destroy'])->name('destroy');
-    Route::post('/template-permissions', [UserController::class, 'getTemplatePermissions'])->name('template-permissions');
+});
+
+// API endpoints para gestión de usuarios (modal en PBX index)
+Route::middleware(['auth', 'admin'])->prefix('api/usuarios')->name('users.api.')->group(function () {
+    Route::get('/', [UserController::class, 'apiIndex'])->name('index');
+    Route::post('/', [UserController::class, 'apiStore'])->name('store');
+    Route::put('/{user}', [UserController::class, 'apiUpdate'])->name('update');
+    Route::delete('/{user}', [UserController::class, 'apiDestroy'])->name('destroy');
 });
 
 

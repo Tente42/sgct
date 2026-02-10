@@ -39,6 +39,32 @@ class CallsExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSiz
             $query->where('source', $this->filtros['anexo']);
         }
 
+        // 4. Filtro por Tipo de Llamada (internal/external)
+        $tipoLlamada = $this->filtros['tipo_llamada'] ?? 'all';
+        if ($tipoLlamada === 'internal') {
+            // Internas: Llamadas originadas por anexos (Internal + Outbound)
+            $query->where(function($q) {
+                $q->whereIn('userfield', ['Internal', 'Outbound'])
+                  ->orWhere(function($q2) {
+                      // Fallback para registros sin userfield: origen es anexo (3-4 dígitos)
+                      $q2->where(function($q3) {
+                          $q3->whereNull('userfield')->orWhere('userfield', '');
+                      })->whereRaw("source REGEXP '^[0-9]{3,4}$'");
+                  });
+            });
+        } elseif ($tipoLlamada === 'external') {
+            // Externas: Llamadas entrantes desde afuera (Inbound)
+            $query->where(function($q) {
+                $q->where('userfield', 'Inbound')
+                  ->orWhere(function($q2) {
+                      // Fallback para registros sin userfield: origen NO es anexo
+                      $q2->where(function($q3) {
+                          $q3->whereNull('userfield')->orWhere('userfield', '');
+                      })->whereRaw("source NOT REGEXP '^[0-9]{3,4}$'");
+                  });
+            });
+        }
+
         // Ordenamos: Las más recientes primero
         return $query->orderBy('start_time', 'desc');
     }

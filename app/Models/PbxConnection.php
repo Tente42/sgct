@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PbxConnection extends Model
@@ -103,5 +104,13 @@ class PbxConnection extends Model
     public function extensions(): HasMany
     {
         return $this->hasMany(Extension::class);
+    }
+
+    /**
+     * Relación: Usuarios que tienen acceso a esta central
+     */
+    public function users(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class)->withTimestamps();
     }
 }

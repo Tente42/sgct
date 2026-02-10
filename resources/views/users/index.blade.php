@@ -42,21 +42,6 @@
             </div>
         @endif
 
-        <!-- Leyenda de Plantillas de Rol -->
-        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <h4 class="font-semibold text-blue-800 mb-2">
-                <i class="fas fa-info-circle mr-1"></i> Plantillas de Roles Disponibles
-            </h4>
-            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 text-sm">
-                @foreach($roleTemplates as $key => $template)
-                <div class="bg-white p-2 rounded border">
-                    <span class="font-semibold text-gray-700">{{ $template['name'] }}</span>
-                    <p class="text-xs text-gray-500">{{ $template['description'] }}</p>
-                </div>
-                @endforeach
-            </div>
-        </div>
-
         <div class="bg-white shadow border-0 rounded-lg overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">

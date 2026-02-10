@@ -42,14 +42,14 @@ class SyncQueueStats extends Command
             ? Carbon::parse($this->option('start-date'))
             : $endDate->copy()->subDays((int) $this->option('days'));
 
-        $this->info("📅 Período: {$startDate->format('Y-m-d')} al {$endDate->format('Y-m-d')}");
+        $this->info(" Período: {$startDate->format('Y-m-d')} al {$endDate->format('Y-m-d')}");
         $this->newLine();
 
         // Obtener central a sincronizar (ahora es obligatorio)
         $pbxId = (int) $this->option('pbx');
         
         if (!$pbxId) {
-            $this->error("❌ Debe especificar una central PBX con --pbx=ID");
+            $this->error(" Debe especificar una central PBX con --pbx=ID");
             return 1;
         }
         

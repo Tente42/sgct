@@ -98,9 +98,36 @@
                     </div>
                     
                     <div class="md:col-span-2 flex gap-2 items-end">
-                        <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">
-                            <i class="fas fa-calculator"></i> Calcular
-                        </button>
+                        <!-- Toggle Salientes/Entrantes -->
+                        <div class="flex flex-col w-full">
+                            <label class="block font-bold text-sm mb-1">Tipo de Llamada:</label>
+                            <div class="flex rounded-lg overflow-hidden border border-gray-300 bg-gray-100">
+                                <button type="submit" 
+                                        name="tipo_llamada" 
+                                        value="internal"
+                                        title="Llamadas hechas por anexos"
+                                        class="flex-1 py-2 px-4 text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2
+                                            {{ request('tipo_llamada', 'all') === 'internal' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50' }}">
+                                    <i class="fas fa-arrow-up"></i> Salientes
+                                </button>
+                                <button type="submit" 
+                                        name="tipo_llamada" 
+                                        value="all"
+                                        title="Todas las llamadas"
+                                        class="flex-1 py-2 px-4 text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2
+                                            {{ request('tipo_llamada', 'all') === 'all' ? 'bg-gray-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50' }}">
+                                    <i class="fas fa-list"></i> Todas
+                                </button>
+                                <button type="submit" 
+                                        name="tipo_llamada" 
+                                        value="external"
+                                        title="Llamadas recibidas desde afuera"
+                                        class="flex-1 py-2 px-4 text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2
+                                            {{ request('tipo_llamada', 'all') === 'external' ? 'bg-green-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50' }}">
+                                    <i class="fas fa-arrow-down"></i> Entrantes
+                                </button>
+                            </div>
+                        </div>
                         
                         @if(Auth::user()->canExportPdf())
                         <button type="button" 
@@ -121,6 +148,7 @@
                             <i class="fas fa-undo"></i>
                         </a>
                         <input type="hidden" name="titulo" id="titulo_pdf" value="{{ $titulo ?? 'Reporte de Llamadas' }}">
+                        <input type="hidden" name="tipo_llamada_hidden" id="tipo_llamada_hidden" value="{{ request('tipo_llamada', 'all') }}">
                     </div>
                 </form>
             </div>
@@ -286,10 +314,13 @@
         function pedirTituloYDescargar() {
             const form = document.querySelector('form[action="{{ url('/') }}"]');
             const inputTitulo = document.getElementById('titulo_pdf');
+            const inputTipoLlamada = document.getElementById('tipo_llamada_hidden');
             const tituloActual = inputTitulo ? inputTitulo.value : 'Reporte de Llamadas';
             const nuevoTitulo = prompt('Título del reporte', tituloActual);
             if (nuevoTitulo === null) return; // cancelado
             if (inputTitulo) inputTitulo.value = (nuevoTitulo.trim() || tituloActual);
+            // Renombrar el hidden para que se envíe como tipo_llamada
+            if (inputTipoLlamada) inputTipoLlamada.name = 'tipo_llamada';
             const oldAction = form.action;
             const oldTarget = form.target;
             form.action = "{{ route('cdr.pdf') }}";
@@ -297,6 +328,8 @@
             form.submit();
             form.action = oldAction;
             form.target = oldTarget;
+            // Restaurar nombre original
+            if (inputTipoLlamada) inputTipoLlamada.name = 'tipo_llamada_hidden';
         }
     </script>
     @endpush
