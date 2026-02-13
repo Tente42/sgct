@@ -71,7 +71,7 @@ class Call extends Model
     /**
      * Obtener tarifas cacheadas
      */
-    protected static function getPrices(): array
+    public static function getPrices(): array
     {
         if (self::$cachedPrices === null) {
             self::$cachedPrices = Setting::pluck('value', 'key')->toArray();

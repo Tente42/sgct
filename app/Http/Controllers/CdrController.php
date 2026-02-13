@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use App\Models\Call;
-use App\Models\Setting;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Exports\CallsExport;
 use Maatwebsite\Excel\Facades\Excel;
@@ -42,7 +41,7 @@ class CdrController extends Controller
         $totalLlamadas = $query->count();
         $totalSegundos = $query->sum('billsec');
         $minutosFacturables = ceil($totalSegundos / 60);
-        $totalPagar = (clone $query)->get()->sum(fn($call) => $call->cost);
+        $totalPagar = (int) (clone $query)->selectRaw($this->getCostSumSql())->value('total_cost');
 
         // Aplicar ordenamiento y paginar
         $llamadas = $this->applySorting(clone $query, $sortBy, $sortDir)->paginate(50);
@@ -126,11 +125,11 @@ class CdrController extends Controller
 
         $llamadas = $query->orderBy('start_time')->limit($limitePDF)->get();
 
-        // Calcular costo total
-        $totalPagar = 0;
-        $this->buildCallQuery($fechaInicio, $fechaFin, $anexo, $tipoLlamada === 'all' ? null : $tipoLlamada)
+        // Calcular costo total directamente en SQL (eficiente para grandes volúmenes)
+        $totalPagar = (int) $this->buildCallQuery($fechaInicio, $fechaFin, $anexo, $tipoLlamada === 'all' ? null : $tipoLlamada)
             ->where('disposition', 'LIKE', '%ANSWERED%')
-            ->chunk(500, fn($chunk) => $totalPagar += $chunk->sum(fn($c) => $c->cost));
+            ->selectRaw($this->getCostSumSql())
+            ->value('total_cost');
 
         $pdf = Pdf::loadView('pdf_reporte', [
             'llamadas' => $llamadas,
@@ -263,12 +262,41 @@ class CdrController extends Controller
         END {$dir}";
     }
 
+    /**
+     * Obtener tarifas cacheadas para SQL (evita consultas redundantes)
+     */
+    private function getCachedPrices(): array
+    {
+        $prices = Call::getPrices();
+        return [
+            'mobile' => (int) ($prices['price_mobile'] ?? 80),
+            'national' => (int) ($prices['price_national'] ?? 40),
+            'international' => (int) ($prices['price_international'] ?? 500),
+        ];
+    }
+
+    /**
+     * SQL para sumar costos directamente en la BD (evita cargar todos los registros en memoria)
+     */
+    private function getCostSumSql(): string
+    {
+        ['mobile' => $mobile, 'national' => $national, 'international' => $international] = $this->getCachedPrices();
+
+        return "SUM(CASE 
+            WHEN billsec <= 3 THEN 0
+            WHEN userfield != 'Outbound' OR userfield IS NULL THEN 0
+            WHEN destination REGEXP '^[0-9]{3,4}$' THEN 0
+            WHEN destination REGEXP '^800' THEN 0
+            WHEN destination REGEXP '^9[0-9]{8}$' THEN CEIL(billsec/60) * {$mobile}
+            WHEN destination REGEXP '^\\\\+?569[0-9]{8}$' THEN CEIL(billsec/60) * {$mobile}
+            WHEN destination REGEXP '^(\\\\+|00)' AND destination NOT REGEXP '^\\\\+?56' THEN CEIL(billsec/60) * {$international}
+            ELSE CEIL(billsec/60) * {$national}
+        END) as total_cost";
+    }
+
     private function getCostSortSql(string $dir): string
     {
-        $prices = Setting::pluck('value', 'key')->toArray();
-        $mobile = $prices['price_mobile'] ?? 80;
-        $national = $prices['price_national'] ?? 40;
-        $international = $prices['price_international'] ?? 500;
+        ['mobile' => $mobile, 'national' => $national, 'international' => $international] = $this->getCachedPrices();
 
         return "CASE 
             WHEN billsec <= 3 THEN 0

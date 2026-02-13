@@ -22,7 +22,7 @@ class ImportarExtensiones extends Command
 
     public function handle(): int
     {
-        ini_set('memory_limit', '512M');
+        ini_set('memory_limit', '1028M');
 
         // Configurar central
         $pbxId = $this->setupPbxConnection();

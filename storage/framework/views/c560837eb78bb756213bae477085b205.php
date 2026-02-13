@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Seleccionar Central - {{ config('app.name') }}</title>
-    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Seleccionar Central - <?php echo e(config('app.name')); ?></title>
+    <meta name="csrf-token" content="<?php echo e(csrf_token()); ?>">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
@@ -307,59 +307,60 @@
 </head>
 <body x-data="pbxManager()">
     <div class="container">
-        {{-- Header --}}
+        
         <div class="header">
             <h1><i class="fas fa-phone-volume"></i> Mis Centrales</h1>
             <div class="header-right">
                 <span class="user-info">
-                    <i class="fas fa-user"></i> {{ auth()->user()->name }}
-                    @if(auth()->user()->isAdmin())
+                    <i class="fas fa-user"></i> <?php echo e(auth()->user()->name); ?>
+
+                    <?php if(auth()->user()->isAdmin()): ?>
                         <span style="background: #ffc107; color: #333; padding: 2px 6px; border-radius: 10px; font-size: 0.7rem; margin-left: 5px;">Admin</span>
-                    @endif
+                    <?php endif; ?>
                 </span>
-                <form action="{{ route('logout') }}" method="POST" style="margin:0;">
-                    @csrf
+                <form action="<?php echo e(route('logout')); ?>" method="POST" style="margin:0;">
+                    <?php echo csrf_field(); ?>
                     <button type="submit" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Salir</button>
                 </form>
             </div>
         </div>
 
-        {{-- Alertas --}}
-        @if(session('success'))
-            <div class="alert alert-success"><i class="fas fa-check-circle"></i> {{ session('success') }}</div>
-        @endif
-        @if(session('warning'))
-            <div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> {{ session('warning') }}</div>
-        @endif
-        @if(session('info'))
-            <div class="alert alert-info"><i class="fas fa-info-circle"></i> {{ session('info') }}</div>
-        @endif
-        @if($errors->any())
+        
+        <?php if(session('success')): ?>
+            <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?php echo e(session('success')); ?></div>
+        <?php endif; ?>
+        <?php if(session('warning')): ?>
+            <div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> <?php echo e(session('warning')); ?></div>
+        <?php endif; ?>
+        <?php if(session('info')): ?>
+            <div class="alert alert-info"><i class="fas fa-info-circle"></i> <?php echo e(session('info')); ?></div>
+        <?php endif; ?>
+        <?php if($errors->any()): ?>
             <div class="alert alert-danger">
                 <i class="fas fa-times-circle"></i> 
-                @foreach($errors->all() as $error) {{ $error }} @endforeach
+                <?php $__currentLoopData = $errors->all(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $error): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?> <?php echo e($error); ?> <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
             </div>
-        @endif
+        <?php endif; ?>
 
-        {{-- Título --}}
+        
         <div class="page-title">
             <h2><i class="fas fa-server"></i> Seleccionar Central</h2>
             <p>Elige la central telefónica con la que deseas trabajar</p>
-            @if(auth()->user()->isAdmin())
+            <?php if(auth()->user()->isAdmin()): ?>
             <button @click="openCreateModal()" class="btn-add">
                 <i class="fas fa-plus"></i> Agregar Nueva Central
             </button>
-            {{-- User Management (modal inline, separate Alpine scope) --}}
+            
             <div x-data="userManager()" style="display: inline-block; vertical-align: top;">
                 <button @click="openModal()" class="btn-users">
                     <i class="fas fa-users-cog"></i> Gestión Usuarios
                 </button>
 
-                {{-- ===== USER MANAGEMENT MODAL ===== --}}
+                
                 <div x-show="showUserModal" class="modal-backdrop" style="display: none;" x-transition>
                     <div class="modal modal-users" @click.outside="closeModal()">
 
-                        {{-- ===== LIST VIEW ===== --}}
+                        
                         <div x-show="currentView === 'list'">
                             <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;">
                                 <h3><i class="fas fa-users"></i> Gestión de Usuarios</h3>
@@ -451,7 +452,7 @@
                             </div>
                         </div>
 
-                        {{-- ===== FORM VIEW (Create / Edit) ===== --}}
+                        
                         <div x-show="currentView === 'form'">
                             <div class="modal-header">
                                 <h3>
@@ -463,7 +464,7 @@
                                 <div x-show="errorMessage && currentView === 'form'" class="alert alert-danger" style="margin-bottom:15px;" x-text="errorMessage" x-transition></div>
 
                                 <div class="user-form-grid">
-                                    {{-- Left: User Info --}}
+                                    
                                     <div>
                                         <h4 style="margin:0 0 15px;color:#333;border-bottom:1px solid #eee;padding-bottom:8px;">
                                             <i class="fas fa-user" style="color:#999;margin-right:5px;"></i> Información
@@ -500,7 +501,7 @@
                                         </div>
                                     </div>
 
-                                    {{-- Right: Permissions + Centrals --}}
+                                    
                                     <div>
                                         <h4 style="margin:0 0 15px;color:#333;border-bottom:1px solid #eee;padding-bottom:8px;">
                                             <i class="fas fa-key" style="color:#999;margin-right:5px;"></i> Permisos
@@ -536,7 +537,7 @@
                                             </p>
                                         </div>
 
-                                        {{-- Centrales Permitidas --}}
+                                        
                                         <div style="margin-top:15px;" :style="form.role === 'admin' ? 'opacity:0.5;pointer-events:none;' : ''">
                                             <h4 style="margin:0 0 10px;color:#333;border-bottom:1px solid #eee;padding-bottom:8px;">
                                                 <i class="fas fa-server" style="color:#17a2b8;margin-right:5px;"></i> Centrales Permitidas
@@ -591,128 +592,131 @@
                     </div>
                 </div>
             </div>
-            @endif
+            <?php endif; ?>
         </div>
 
-        {{-- Grid de Centrales --}}
-        @if($connections->isEmpty())
+        
+        <?php if($connections->isEmpty()): ?>
             <div class="empty-state">
                 <i class="fas fa-server"></i>
                 <h3>No hay centrales configuradas</h3>
                 <p>Agrega tu primera central PBX para comenzar</p>
             </div>
-        @else
+        <?php else: ?>
             <div class="grid">
-                @foreach($connections as $connection)
-                    @php
+                <?php $__currentLoopData = $connections; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $connection): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                    <?php
                         $cardClass = session('active_pbx_id') === $connection->id ? 'active' : '';
                         if ($connection->status === 'syncing') $cardClass .= ' syncing';
                         if ($connection->status === 'pending') $cardClass .= ' pending';
                         if ($connection->status === 'error') $cardClass .= ' error';
-                    @endphp
-                    <div class="card {{ $cardClass }}">
-                        {{-- Overlay para centrales en sincronización --}}
-                        @if($connection->status === 'syncing' && !auth()->user()->isAdmin())
+                    ?>
+                    <div class="card <?php echo e($cardClass); ?>">
+                        
+                        <?php if($connection->status === 'syncing' && !auth()->user()->isAdmin()): ?>
                             <div class="sync-overlay">
                                 <i class="fas fa-sync fa-spin"></i>
                                 <p>Sincronizando datos...</p>
                                 <p style="font-size: 0.8rem; color: #999;">Disponible pronto</p>
                             </div>
-                        @endif
+                        <?php endif; ?>
 
                         <div class="card-header">
                             <h3>
-                                {{ $connection->name ?? 'Sin nombre' }}
-                                @if(session('active_pbx_id') === $connection->id)
+                                <?php echo e($connection->name ?? 'Sin nombre'); ?>
+
+                                <?php if(session('active_pbx_id') === $connection->id): ?>
                                     <span class="badge-active">ACTIVA</span>
-                                @endif
-                                @if(auth()->user()->isAdmin() && $connection->status !== 'ready')
-                                    <span class="badge-status badge-{{ $connection->status }}">
-                                        @switch($connection->status)
-                                            @case('pending') PENDIENTE @break
-                                            @case('syncing') SINCRONIZANDO @break
-                                            @case('error') ERROR @break
-                                            @default {{ strtoupper($connection->status) }}
-                                        @endswitch
+                                <?php endif; ?>
+                                <?php if(auth()->user()->isAdmin() && $connection->status !== 'ready'): ?>
+                                    <span class="badge-status badge-<?php echo e($connection->status); ?>">
+                                        <?php switch($connection->status):
+                                            case ('pending'): ?> PENDIENTE <?php break; ?>
+                                            <?php case ('syncing'): ?> SINCRONIZANDO <?php break; ?>
+                                            <?php case ('error'): ?> ERROR <?php break; ?>
+                                            <?php default: ?> <?php echo e(strtoupper($connection->status)); ?>
+
+                                        <?php endswitch; ?>
                                     </span>
-                                @endif
+                                <?php endif; ?>
                             </h3>
-                            <div class="ip"><i class="fas fa-network-wired"></i> {{ $connection->ip }}:{{ $connection->port }}</div>
+                            <div class="ip"><i class="fas fa-network-wired"></i> <?php echo e($connection->ip); ?>:<?php echo e($connection->port); ?></div>
                         </div>
                         <div class="card-body">
                             <div class="info">
-                                <i class="fas fa-user"></i> Usuario: <span>{{ $connection->username }}</span><br>
+                                <i class="fas fa-user"></i> Usuario: <span><?php echo e($connection->username); ?></span><br>
                                 <i class="fas fa-shield-alt"></i> SSL: 
-                                <span>{{ $connection->verify_ssl ? 'Verificado' : 'Sin verificar' }}</span>
-                                @if(auth()->user()->isAdmin() && $connection->last_sync_at)
+                                <span><?php echo e($connection->verify_ssl ? 'Verificado' : 'Sin verificar'); ?></span>
+                                <?php if(auth()->user()->isAdmin() && $connection->last_sync_at): ?>
                                     <br><i class="fas fa-clock"></i> Última sync: 
-                                    <span>{{ $connection->last_sync_at->diffForHumans() }}</span>
-                                @endif
+                                    <span><?php echo e($connection->last_sync_at->diffForHumans()); ?></span>
+                                <?php endif; ?>
                             </div>
 
-                            {{-- Mostrar mensaje de error si existe --}}
-                            @if(auth()->user()->isAdmin() && $connection->status === 'error' && $connection->sync_message)
+                            
+                            <?php if(auth()->user()->isAdmin() && $connection->status === 'error' && $connection->sync_message): ?>
                                 <div style="background: #f8d7da; color: #721c24; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 0.85rem;">
-                                    <i class="fas fa-exclamation-triangle"></i> {{ $connection->sync_message }}
-                                </div>
-                            @endif
+                                    <i class="fas fa-exclamation-triangle"></i> <?php echo e($connection->sync_message); ?>
 
-                            {{-- Botón para continuar configuración (solo admin, estado pending) --}}
-                            @if(auth()->user()->isAdmin() && $connection->status === 'pending')
-                                <a href="{{ route('pbx.setup', $connection) }}" class="btn-connect" style="background: #ffc107; color: #333;">
+                                </div>
+                            <?php endif; ?>
+
+                            
+                            <?php if(auth()->user()->isAdmin() && $connection->status === 'pending'): ?>
+                                <a href="<?php echo e(route('pbx.setup', $connection)); ?>" class="btn-connect" style="background: #ffc107; color: #333;">
                                     <i class="fas fa-cog"></i> CONFIGURAR CENTRAL
                                 </a>
-                            @elseif(auth()->user()->isAdmin() && $connection->status === 'syncing')
-                                <a href="{{ route('pbx.setup', $connection) }}" class="btn-connect" style="background: #17a2b8;">
+                            <?php elseif(auth()->user()->isAdmin() && $connection->status === 'syncing'): ?>
+                                <a href="<?php echo e(route('pbx.setup', $connection)); ?>" class="btn-connect" style="background: #17a2b8;">
                                     <i class="fas fa-sync fa-spin"></i> VER PROGRESO
                                 </a>
-                            @elseif(auth()->user()->isAdmin() && $connection->status === 'error')
-                                <a href="{{ route('pbx.setup', $connection) }}" class="btn-connect" style="background: #dc3545;">
+                            <?php elseif(auth()->user()->isAdmin() && $connection->status === 'error'): ?>
+                                <a href="<?php echo e(route('pbx.setup', $connection)); ?>" class="btn-connect" style="background: #dc3545;">
                                     <i class="fas fa-redo"></i> REINTENTAR SYNC
                                 </a>
-                            @elseif(session('active_pbx_id') === $connection->id)
-                                @if(auth()->user()->isAdmin())
-                                <form action="{{ route('pbx.disconnect') }}" method="POST">
-                                    @csrf
+                            <?php elseif(session('active_pbx_id') === $connection->id): ?>
+                                <?php if(auth()->user()->isAdmin()): ?>
+                                <form action="<?php echo e(route('pbx.disconnect')); ?>" method="POST">
+                                    <?php echo csrf_field(); ?>
                                     <button type="submit" class="btn-disconnect">
                                         <i class="fas fa-power-off"></i> DESCONECTAR
                                     </button>
                                 </form>
-                                @else
+                                <?php else: ?>
                                 <div style="padding: 10px; background: #e9ecef; border-radius: 4px; text-align: center; color: #666; margin-bottom: 10px;">
                                     <i class="fas fa-check-circle" style="color: #28a745;"></i> Central Activa
                                 </div>
-                                @endif
-                            @elseif($connection->status === 'ready')
-                                <a href="{{ route('pbx.select', $connection) }}" class="btn-connect">
+                                <?php endif; ?>
+                            <?php elseif($connection->status === 'ready'): ?>
+                                <a href="<?php echo e(route('pbx.select', $connection)); ?>" class="btn-connect">
                                     <i class="fas fa-plug"></i> CONECTAR
                                 </a>
-                            @endif
+                            <?php endif; ?>
 
-                            @if(auth()->user()->isAdmin())
+                            <?php if(auth()->user()->isAdmin()): ?>
                             <div class="card-actions">
-                                <button @click="openEditModal({{ $connection->toJson() }})" class="btn-edit">
+                                <button @click="openEditModal(<?php echo e($connection->toJson()); ?>)" class="btn-edit">
                                     <i class="fas fa-edit"></i> Editar
                                 </button>
-                                <button @click="confirmDelete({{ $connection->id }}, '{{ $connection->name ?? $connection->ip }}')" 
+                                <button @click="confirmDelete(<?php echo e($connection->id); ?>, '<?php echo e($connection->name ?? $connection->ip); ?>')" 
                                         class="btn-delete"
-                                        {{ session('active_pbx_id') === $connection->id ? 'disabled' : '' }}>
+                                        <?php echo e(session('active_pbx_id') === $connection->id ? 'disabled' : ''); ?>>
                                     <i class="fas fa-trash"></i> Eliminar
                                 </button>
                             </div>
-                            @endif
+                            <?php endif; ?>
                         </div>
                     </div>
-                @endforeach
+                <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
             </div>
-        @endif
+        <?php endif; ?>
     </div>
 
-    {{-- Modal Crear/Editar --}}
+    
     <div x-show="showModal" class="modal-backdrop" style="display: none;" x-transition>
         <div class="modal" @click.outside="closeModal()">
             <form :action="formAction" method="POST">
-                @csrf
+                <?php echo csrf_field(); ?>
                 <template x-if="isEditing">
                     <input type="hidden" name="_method" value="PUT">
                 </template>
@@ -761,7 +765,7 @@
         </div>
     </div>
 
-    {{-- Modal Confirmar Eliminación --}}
+    
     <div x-show="showDeleteModal" class="modal-backdrop" style="display: none;" x-transition>
         <div class="modal" style="max-width: 400px;">
             <div class="modal-header" style="background: #dc3545;">
@@ -776,8 +780,8 @@
             <div class="modal-footer">
                 <button type="button" @click="showDeleteModal = false" class="btn-cancel">Cancelar</button>
                 <form :action="deleteAction" method="POST" style="margin:0;">
-                    @csrf
-                    @method('DELETE')
+                    <?php echo csrf_field(); ?>
+                    <?php echo method_field('DELETE'); ?>
                     <button type="submit" class="btn-delete" style="padding: 10px 20px;">
                         <i class="fas fa-trash"></i> Eliminar
                     </button>
@@ -792,21 +796,21 @@
                 showModal: false,
                 showDeleteModal: false,
                 isEditing: false,
-                formAction: '{{ route("pbx.store") }}',
+                formAction: '<?php echo e(route("pbx.store")); ?>',
                 deleteAction: '',
                 deleteConnectionName: '',
                 form: { name: '', ip: '', port: '', username: '', password: '', verify_ssl: false },
 
                 openCreateModal() {
                     this.isEditing = false;
-                    this.formAction = '{{ route("pbx.store") }}';
+                    this.formAction = '<?php echo e(route("pbx.store")); ?>';
                     this.form = { name: '', ip: '', port: '', username: '', password: '', verify_ssl: false };
                     this.showModal = true;
                 },
 
                 openEditModal(connection) {
                     this.isEditing = true;
-                    this.formAction = '{{ url("pbx") }}/' + connection.id;
+                    this.formAction = '<?php echo e(url("pbx")); ?>/' + connection.id;
                     this.form = {
                         name: connection.name || '',
                         ip: connection.ip,
@@ -823,7 +827,7 @@
                 },
 
                 confirmDelete(id, name) {
-                    this.deleteAction = '{{ url("pbx") }}/' + id;
+                    this.deleteAction = '<?php echo e(url("pbx")); ?>/' + id;
                     this.deleteConnectionName = name;
                     this.showDeleteModal = true;
                 }
@@ -832,7 +836,7 @@
 
         function userManager() {
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
-            const apiBase = '{{ url("api/usuarios") }}';
+            const apiBase = '<?php echo e(url("api/usuarios")); ?>';
 
             return {
                 showUserModal: false,
@@ -1053,3 +1057,4 @@
     </script>
 </body>
 </html>
+<?php /**PATH C:\xampp\htdocs\panel_llamadas\resources\views/pbx/index.blade.php ENDPATH**/ ?>
