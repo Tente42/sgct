@@ -182,44 +182,56 @@ class StatsController extends Controller
             ];
         }
 
-        // Obtener datos desde queue_call_details (fuente más precisa)
+        // Obtener datos agregados por hora desde queue_call_details (fuente más precisa)
         $query = QueueCallDetail::betweenDates($fechaInicio, $fechaFin);
         
         if ($colaFiltro) {
             $query->forQueue($colaFiltro);
         }
 
-        $detalles = $query->get();
+        // Agregar en SQL en lugar de cargar todos los registros en memoria
+        $datosPorHora = $query->select([
+                DB::raw('HOUR(call_time) as hora'),
+                DB::raw('COUNT(*) as volumen'),
+                DB::raw('SUM(CASE WHEN connected = 1 THEN 1 ELSE 0 END) as atendidas'),
+                DB::raw('SUM(CASE WHEN connected = 0 THEN 1 ELSE 0 END) as abandonadas'),
+                DB::raw('SUM(CASE WHEN connected = 1 THEN wait_time ELSE 0 END) as tiempo_espera_total'),
+                DB::raw('SUM(CASE WHEN connected = 1 THEN talk_time ELSE 0 END) as billsec_total'),
+            ])
+            ->groupBy(DB::raw('HOUR(call_time)'))
+            ->get()
+            ->keyBy('hora');
 
-        // Procesar cada registro de queue_call_details
-        foreach ($detalles as $detalle) {
-            $hora = Carbon::parse($detalle->call_time)->format('H');
-            
-            // Ignorar llamadas fuera del horario laboral (08:00 - 20:00)
-            if (!isset($kpisPorHora[$hora])) {
-                continue;
-            }
+        // Obtener agentes únicos por hora (solo esta parte necesita registros individuales)
+        $agentesQuery = QueueCallDetail::betweenDates($fechaInicio, $fechaFin)
+            ->where('connected', true)
+            ->whereNotNull('agent')
+            ->where('agent', '!=', 'NONE');
+        
+        if ($colaFiltro) {
+            $agentesQuery->forQueue($colaFiltro);
+        }
 
-            // Cada registro en queue_call_details es una llamada única
-            $kpisPorHora[$hora]['volumen']++;
+        $agentesPorHoraData = $agentesQuery
+            ->select(DB::raw('HOUR(call_time) as hora'), 'agent')
+            ->distinct()
+            ->get()
+            ->groupBy('hora');
 
-            if ($detalle->connected) {
-                // Llamada atendida
-                $kpisPorHora[$hora]['atendidas']++;
-                
-                // Tiempo de espera (wait_time viene de queueapi)
-                $kpisPorHora[$hora]['tiempo_espera_total'] += (int) $detalle->wait_time;
-                
-                // Tiempo de conversación (talk_time viene de queueapi)
-                $kpisPorHora[$hora]['billsec_total'] += (int) $detalle->talk_time;
+        // Poblar estructura de KPIs
+        foreach ($datosPorHora as $hora => $datos) {
+            $horaKey = str_pad($hora, 2, '0', STR_PAD_LEFT);
+            if (!isset($kpisPorHora[$horaKey])) continue;
 
-                // Registrar agente
-                if ($detalle->agent && $detalle->agent !== 'NONE' && !in_array($detalle->agent, $kpisPorHora[$hora]['agentes'])) {
-                    $kpisPorHora[$hora]['agentes'][] = $detalle->agent;
-                }
-            } else {
-                // Llamada abandonada
-                $kpisPorHora[$hora]['abandonadas']++;
+            $kpisPorHora[$horaKey]['volumen'] = (int) $datos->volumen;
+            $kpisPorHora[$horaKey]['atendidas'] = (int) $datos->atendidas;
+            $kpisPorHora[$horaKey]['abandonadas'] = (int) $datos->abandonadas;
+            $kpisPorHora[$horaKey]['tiempo_espera_total'] = (int) $datos->tiempo_espera_total;
+            $kpisPorHora[$horaKey]['billsec_total'] = (int) $datos->billsec_total;
+
+            // Asignar agentes
+            if (isset($agentesPorHoraData[$hora])) {
+                $kpisPorHora[$horaKey]['agentes'] = $agentesPorHoraData[$hora]->pluck('agent')->sort()->values()->toArray();
             }
         }
 
@@ -346,57 +358,62 @@ class StatsController extends Controller
      */
     private function calcularKpisPorCola(string $fechaInicio, string $fechaFin): array
     {
-        $detalles = QueueCallDetail::betweenDates($fechaInicio, $fechaFin)->get();
+        // Agregar en SQL en lugar de cargar todos los registros en memoria
+        $datosAgrupados = QueueCallDetail::betweenDates($fechaInicio, $fechaFin)
+            ->whereNotNull('queue')
+            ->select([
+                'queue',
+                DB::raw('COUNT(*) as volumen'),
+                DB::raw('SUM(CASE WHEN connected = 1 THEN 1 ELSE 0 END) as atendidas'),
+                DB::raw('SUM(CASE WHEN connected = 0 THEN 1 ELSE 0 END) as abandonadas'),
+                DB::raw('SUM(CASE WHEN connected = 1 THEN talk_time ELSE 0 END) as billsec_total'),
+                DB::raw('SUM(CASE WHEN connected = 1 THEN wait_time ELSE 0 END) as tiempo_espera_total'),
+            ])
+            ->groupBy('queue')
+            ->get();
+
+        // Obtener agentes únicos por cola
+        $agentesPorColaData = QueueCallDetail::betweenDates($fechaInicio, $fechaFin)
+            ->where('connected', true)
+            ->whereNotNull('agent')
+            ->where('agent', '!=', 'NONE')
+            ->whereNotNull('queue')
+            ->select('queue', 'agent')
+            ->distinct()
+            ->get()
+            ->groupBy('queue');
 
         $kpisPorCola = [];
 
-        foreach ($detalles as $detalle) {
-            $cola = $detalle->queue;
-            if (!$cola) continue;
+        foreach ($datosAgrupados as $datos) {
+            $cola = $datos->queue;
+            $volumen = (int) $datos->volumen;
+            $atendidas = (int) $datos->atendidas;
+            $abandonadas = (int) $datos->abandonadas;
 
-            if (!isset($kpisPorCola[$cola])) {
-                $kpisPorCola[$cola] = [
-                    'cola' => $cola,
-                    'volumen' => 0,
-                    'atendidas' => 0,
-                    'abandonadas' => 0,
-                    'abandono_pct' => '0%',
-                    'billsec_total' => 0,
-                    'tiempo_espera_total' => 0,
-                    'agentes' => [],
-                ];
-            }
+            $kpisPorCola[$cola] = [
+                'cola' => $cola,
+                'volumen' => $volumen,
+                'atendidas' => $atendidas,
+                'abandonadas' => $abandonadas,
+                'abandono_pct' => '0%',
+                'billsec_total' => (int) $datos->billsec_total,
+                'tiempo_espera_total' => (int) $datos->tiempo_espera_total,
+                'agentes' => isset($agentesPorColaData[$cola])
+                    ? $agentesPorColaData[$cola]->pluck('agent')->sort()->values()->toArray()
+                    : [],
+                'asa' => '0s',
+            ];
 
-            $kpisPorCola[$cola]['volumen']++;
-            
-            if ($detalle->connected) {
-                $kpisPorCola[$cola]['atendidas']++;
-                $kpisPorCola[$cola]['billsec_total'] += (int) $detalle->talk_time;
-                $kpisPorCola[$cola]['tiempo_espera_total'] += (int) $detalle->wait_time;
-
-                // Registrar agente
-                if ($detalle->agent && $detalle->agent !== 'NONE' && !in_array($detalle->agent, $kpisPorCola[$cola]['agentes'])) {
-                    $kpisPorCola[$cola]['agentes'][] = $detalle->agent;
-                }
-            } else {
-                $kpisPorCola[$cola]['abandonadas']++;
+            if ($volumen > 0) {
+                $pct = round(($abandonadas / $volumen) * 100, 1);
+                $kpisPorCola[$cola]['abandono_pct'] = $pct . '%';
+                $kpisPorCola[$cola]['abandono_valor'] = $pct;
             }
-        }
-
-        // Calcular porcentajes
-        foreach ($kpisPorCola as $cola => &$datos) {
-            if ($datos['volumen'] > 0) {
-                $pct = round(($datos['abandonadas'] / $datos['volumen']) * 100, 1);
-                $datos['abandono_pct'] = $pct . '%';
-                $datos['abandono_valor'] = $pct;
+            if ($atendidas > 0) {
+                $asa = round((int) $datos->billsec_total / $atendidas);
+                $kpisPorCola[$cola]['asa'] = $asa . 's';
             }
-            if ($datos['atendidas'] > 0) {
-                $asa = round($datos['billsec_total'] / $datos['atendidas']);
-                $datos['asa'] = $asa . 's';
-            } else {
-                $datos['asa'] = '0s';
-            }
-            sort($datos['agentes']);
         }
 
         return $kpisPorCola;

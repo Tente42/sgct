@@ -4,8 +4,6 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Extension;
-use App\Http\Controllers\IPController;
-use Illuminate\Support\Facades\Http;
 use App\Traits\GrandstreamTrait;
 
 class ExtensionController extends Controller
@@ -179,20 +177,31 @@ class ExtensionController extends Controller
         $rawAccounts = $liveData['response']['account'] ?? 
                        $liveData['response']['body']['account'] ?? [];
 
-        $updated = 0;
+        // Preparar mapa de extensión => IP para actualización por lote
+        $ipMap = [];
         foreach ($rawAccounts as $account) {
             $ext = $account['extension'] ?? null;
             $addr = $account['addr'] ?? null;
             
             if ($ext) {
-                $ip = ($addr && $addr !== '-') ? $addr : null;
-                
-                $extension = Extension::where('extension', $ext)->first();
-                if ($extension) {
-                    $extension->update(['ip' => $ip]);
-                    $updated++;
+                $ipMap[$ext] = ($addr && $addr !== '-') ? $addr : null;
+            }
+        }
+
+        // Actualización por lote: una sola consulta para obtener extensiones, luego batch update
+        if (!empty($ipMap)) {
+            $extensions = Extension::whereIn('extension', array_keys($ipMap))->get();
+            
+            foreach ($extensions as $extension) {
+                $newIp = $ipMap[$extension->extension] ?? null;
+                if ($extension->ip !== $newIp) {
+                    $extension->update(['ip' => $newIp]);
                 }
             }
+            
+            $updated = $extensions->count();
+        } else {
+            $updated = 0;
         }
 
         return back()->with('success', "Se actualizaron las IPs de {$updated} extensiones.");

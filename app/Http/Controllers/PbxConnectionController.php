@@ -585,8 +585,10 @@ class PbxConnectionController extends Controller
      */
     private function setPbxConnection(PbxConnection $pbx): void
     {
-        // El trait usa la sesión para obtener la conexión
+        // Guardar en sesión para el binding del service provider
         session(['active_pbx_id' => $pbx->id]);
+        // Reconfigurar el servicio directamente para la request actual
+        $this->getGrandstreamService()->setConnectionFromModel($pbx);
     }
 
     /**

@@ -56,6 +56,13 @@ class Extension extends Model
         return $this->belongsTo(PbxConnection::class);
     }
 
+    /**
+     * Campos ocultos en serialización (protege credenciales SIP)
+     */
+    protected $hidden = [
+        'secret',
+    ];
+
     // Casting de tipos para campos especificos
     protected $casts = [
         'do_not_disturb' => 'boolean',

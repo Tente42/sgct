@@ -92,7 +92,7 @@ Route::middleware(['auth', 'pbx.selected'])->group(function () {
 
     // Funciones de solo lectura (Todos los usuarios)
     Route::get('/export-pdf', [CdrController::class, 'descargarPDF'])->name('cdr.pdf');
-    Route::get('/exportar-excel', [App\Http\Controllers\CdrController::class, 'exportarExcel'])->name('calls.export');
+    Route::get('/exportar-excel', [CdrController::class, 'exportarExcel'])->name('calls.export');
     Route::get('/tarifas', [SettingController::class, 'index'])->name('settings.index');
 
     // Funciones que requieren permisos específicos (verificados en el controlador)

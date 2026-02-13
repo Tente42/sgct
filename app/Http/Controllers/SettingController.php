@@ -26,10 +26,21 @@ class SettingController extends Controller
             abort(403, 'No tienes permiso para editar tarifas.');
         }
 
-        // Recorrer todos los inputs excepto el token CSRF
-        foreach ($request->except('_token') as $key => $value) {
-            Setting::where('key', $key)->update(['value' => (int) $value]);
+        // Solo permitir claves de tarifa conocidas (seguridad: evitar manipulación de otros settings)
+        $allowedKeys = ['price_mobile', 'price_national', 'price_international'];
+
+        $request->validate(
+            collect($allowedKeys)->mapWithKeys(fn($key) => [$key => 'nullable|integer|min:0'])->toArray()
+        );
+
+        foreach ($allowedKeys as $key) {
+            if ($request->has($key)) {
+                Setting::where('key', $key)->update(['value' => (int) $request->input($key)]);
+            }
         }
+
+        // Limpiar cache de tarifas en el modelo Call
+        \App\Models\Call::clearPricesCache();
 
         return back()->with('success', 'Tarifas actualizadas correctamente.');
     }

@@ -1,403 +1,577 @@
-# Controladores - Documentación Detallada
+# Controladores — Documentación Detallada
+
+> Este documento describe los 10 controladores del sistema, sus flujos de negocio, reglas de autorización y patrones de integración con la API Grandstream.
 
 ---
 
 ## 1. `CdrController` (app/Http/Controllers/CdrController.php)
 
-**Propósito:** Controlador principal del dashboard de llamadas. Gestiona reportes, sincronización CDR, exportaciones y gráficos.
+**Propósito:** Controlador principal del dashboard. Gestiona la visualización de CDRs, sincronización con la central, cálculo de KPIs financieros y exportación de reportes. Es el controlador más usado del sistema.
 
 **Traits usados:** `GrandstreamTrait`, `ProcessesCdr`
 
 ### Métodos Públicos
 
-#### `index(Request $request)`
+#### `index(Request $request)` — Dashboard Principal
 **Ruta:** `GET /dashboard`  
 **Vista:** `reporte`  
-**Descripción:** Dashboard principal de llamadas. Muestra un listado paginado de llamadas con filtros.
+**Acceso:** Cualquier usuario autenticado con central seleccionada
 
 **Parámetros del Request:**
-- `fecha_inicio` (default: hoy)
-- `fecha_fin` (default: hoy)
-- `anexo` (opcional)
-- `titulo` (default: 'Reporte de Llamadas')
-- `tipo_llamada` (all/internal/external)
-- `sort` (start_time/billsec/tipo/costo)
-- `dir` (asc/desc)
 
-**Lógica:**
-1. Construye query con `buildCallQuery()` aplicando filtros
-2. Genera datos para gráfico (llamadas por día)
-3. Calcula totales: total llamadas, segundos, minutos facturables, costo
-4. Aplica ordenamiento y pagina (50 por página)
+| Parámetro | Default | Descripción |
+|---|---|---|
+| `fecha_inicio` | Hoy | Fecha inicio del filtro (Y-m-d) |
+| `fecha_fin` | Hoy | Fecha fin del filtro (Y-m-d) |
+| `anexo` | null | Filtrar por extensión origen |
+| `titulo` | 'Reporte de Llamadas' | Título para exportación PDF |
+| `tipo_llamada` | `all` | `all` / `internal` (salientes) / `external` (entrantes) |
+| `sort` | `start_time` | Campo de ordenamiento |
+| `dir` | `desc` | Dirección: `asc` / `desc` |
+
+**Flujo de procesamiento:**
+1. Construye query con `buildCallQuery()` aplicando todos los filtros
+2. **Cálculo de costos en SQL** (no PHP) usando `CASE WHEN` que replica la lógica del accessor `getCostAttribute()`:
+   ```sql
+   SUM(CASE WHEN billsec <= 3 THEN 0
+            WHEN userfield != 'Outbound' THEN 0
+            WHEN destination REGEXP '^[0-9]{3,4}$' THEN 0
+            WHEN destination REGEXP '^800' THEN 0
+            WHEN destination REGEXP '^9[0-9]{8}$' THEN CEIL(billsec/60) * $mobile_rate
+            ... END) as total_cost
+   ```
+3. Genera datos para gráfico de líneas (llamadas por día)
+4. Calcula totales: total llamadas, segundos, minutos facturables, costo total
+5. Aplica ordenamiento y paginación (50 registros/página)
+
+> **Optimización de rendimiento:** Los totales financieros se calculan con agregación SQL directa, evitando cargar todos los registros en memoria PHP. Esto permite manejar miles de CDRs eficientemente.
 
 ---
 
-#### `syncCDRs()`
+#### `syncCDRs()` — Sincronización Incremental de CDRs
 **Ruta:** `POST /sync`  
-**Permiso:** `canSyncCalls()`  
-**Descripción:** Sincroniza CDRs desde la API Grandstream.
+**Permiso:** `canSyncCalls()`
 
-**Lógica:**
-1. Verifica permiso del usuario
-2. Busca la última llamada en BD para determinar desde cuándo sincronizar
-3. Si no hay llamadas, sincroniza los últimos 30 días
-4. Llama a `cdrapi` con rango de fechas
-5. Procesa paquetes CDR con `processCdrPackets()`
-6. Retorna conteo de nuevas y actualizadas
+**Estrategia de sincronización incremental:**
+1. Busca la última llamada en BD (`max(start_time)`)
+2. Si existe → sincroniza desde `start_time - 1 hora` (overlap de seguridad para no perder llamadas en curso durante la última sync)
+3. Si no hay llamadas → sincroniza los últimos 30 días
+4. Llama a `cdrapi` con formato de fecha obligatorio `YYYY-MM-DDTHH:MM:SS` (la "T" es requerida por la API)
+5. Procesa respuesta con `processCdrPackets()` (trait `ProcessesCdr`)
+6. Usa `updateOrCreate` con clave `{pbx_connection_id, unique_id}` → **idempotente**
+
+**Retorna flash message:** "Se encontraron X nuevas llamadas y Y actualizadas"
 
 ---
 
-#### `descargarPDF(Request $request)`
+#### `descargarPDF(Request $request)` — Exportación PDF
 **Ruta:** `GET /export-pdf`  
-**Permiso:** `canExportPdf()`  
-**Descripción:** Genera y descarga un reporte PDF de llamadas contestadas.
+**Permiso:** `canExportPdf()`
 
-**Lógica:**
-1. Incrementa memory_limit a 1024M y max_execution_time a 300s
-2. Construye query filtrando solo `ANSWERED`
-3. Limita a 500 registros para el PDF
-4. Calcula totales (costo se calcula por chunks para eficiencia)
-5. Genera PDF con DomPDF en formato carta vertical
-6. Nombre del archivo: `Reporte_Llamadas_DDMMYYYY_HHiiss.pdf`
+**Configuración de recursos:**
+- `memory_limit` → 1024M (PDFs con muchos registros)
+- `max_execution_time` → 300s (5 minutos)
+- Máximo **500 registros** por PDF (previene exhaustión de memoria)
+- Solo llamadas con disposition `ANSWERED`
+
+**Cálculo eficiente de costos:** Usa chunks para calcular el costo total sin cargar todos los registros en memoria simultáneamente.
+
+**Formato:** Carta vertical, DomPDF. Nombre: `Reporte_Llamadas_DDMMYYYY_HHiiss.pdf`
 
 ---
 
-#### `exportarExcel(Request $request)`
+#### `exportarExcel(Request $request)` — Exportación Excel
 **Ruta:** `GET /exportar-excel`  
-**Permiso:** `canExportExcel()`  
-**Descripción:** Exporta un reporte Excel usando `CallsExport`.
+**Permiso:** `canExportExcel()`
+
+Delega a `CallsExport` (Maatwebsite). Usa `FromQuery` → **streaming desde cursor DB**, sin límite práctico de registros.
 
 ---
 
-#### `showCharts(Request $request)`
+#### `showCharts(Request $request)` — Gráficos Analíticos
 **Ruta:** `GET /graficos`  
 **Permiso:** `canViewCharts()`  
-**Vista:** `graficos`  
-**Descripción:** Muestra gráficos de llamadas.
+**Vista:** `graficos`
 
 **Datos generados:**
-- Gráfico de torta: llamadas por disposition (ANSWERED, BUSY, etc.)
-- Gráfico de línea: llamadas por día
+- **Gráfico de torta:** Distribución por disposition (ANSWERED verde, BUSY amarillo, NO ANSWER rojo, FAILED gris)
+- **Gráfico de línea:** Tendencia diaria de volumen de llamadas
 
 ---
 
-### Métodos Privados
+### Métodos Privados — Lógica de Negocio Interna
 
 #### `buildCallQuery(string $fechaInicio, string $fechaFin, ?string $anexo, ?string $tipoLlamada)`
-Construye el query base para llamadas con filtros.
+Construye el query base para llamadas con filtros. Implementa la clasificación interna/externa con doble estrategia:
 
 **Filtrado por tipo de llamada:**
-- `internal`: Usa `userfield IN ('Internal', 'Outbound')` + fallback regex para registros sin userfield
-- `external`: Usa `userfield = 'Inbound'` + fallback regex
+- `internal` (salientes): Usa campo `userfield IN ('Internal', 'Outbound')` como criterio primario. Incluye fallback con regex `REGEXP '^[0-9]{3,4}$'` para registros sin `userfield` (datos migrados antes de agregar el campo).
+- `external` (entrantes): Usa `userfield = 'Inbound'` + fallback regex para destinos con más de 4 dígitos.
+- `all`: Sin filtro de tipo.
+
+> **Decisión de diseño:** El doble criterio (userfield + regex fallback) se mantiene por retrocompatibilidad con CDRs sincronizados antes de la migración `2026_01_30_000001` que agregó el campo `userfield`.
 
 ---
 
 #### `validateSort(string $sort): string`
-Valida que el campo de ordenamiento sea válido. Campos permitidos: `start_time`, `billsec`, `tipo`, `costo`.
+Whitelist de campos permitidos: `start_time`, `billsec`, `tipo`, `costo`. Retorna `start_time` si el campo no es válido. **Previene SQL injection en ORDER BY.**
 
 ---
 
 #### `applySorting($query, string $sortBy, string $sortDir)`
-Aplica ordenamiento al query. Para `tipo` y `costo` usa SQL CASE con `orderByRaw`.
-
----
-
-#### `getTypeSortSql(string $dir): string`
-Genera SQL CASE para ordenar por tipo de llamada (Interna=1, Local=2, Celular=3, Nacional=4, Internacional=5).
-
----
-
-#### `getCostSortSql(string $dir): string`
-Genera SQL CASE para ordenar por costo calculado en la BD.
+Para campos calculados (`tipo`, `costo`) usa `orderByRaw` con SQL CASE:
+- `tipo` → ordena por prioridad: Interna(1) < Local(2) < Celular(3) < Nacional(4) < Internacional(5)
+- `costo` → replica la fórmula de costo completa en SQL
 
 ---
 
 #### `processCdrPackets(array $packets): array`
-Procesa paquetes CDR: extrae segmentos, consolida y hace `updateOrCreate` en la BD. Retorna `['nuevas' => N, 'actualizadas' => N]`.
+Procesa la respuesta cruda de `cdrapi`: extrae segmentos recursivamente (los CDR de Grandstream tienen estructura jerárquica con `main_cdr` y `sub_cdr`), consolida múltiples segmentos en un registro y ejecuta `updateOrCreate`. Retorna `['nuevas' => N, 'actualizadas' => N]`.
 
 ---
 
 ## 2. `ExtensionController` (app/Http/Controllers/ExtensionController.php)
 
-**Propósito:** Gestiona extensiones: edición, actualización de IPs y desvíos de llamadas.
+**Propósito:** Gestiona extensiones con edición bidireccional: los cambios se aplican simultáneamente en la **central Grandstream** (vía API) y en la **BD local**. Implementa también la configuración de desvíos de llamadas (Call Forwarding), una funcionalidad crítica de telefonía.
 
 **Trait usado:** `GrandstreamTrait`
 
 ### Métodos Públicos
 
-#### `index(Request $request)`
+#### `index(Request $request)` — Listado de Extensiones
 **Ruta:** `GET /configuracion`  
 **Vista:** `configuracion`  
-**Descripción:** Lista todas las extensiones paginadas (50 por página) con filtro por número.
+**Acceso:** Cualquier usuario autenticado
+
+Lista todas las extensiones paginadas (50/página) con filtro por número de extensión. La vista incluye un componente Alpine.js complejo (`extensionEditor()`) con modal multi-paso.
 
 ---
 
-#### `update(Request $request)`
+#### `update(Request $request)` — Actualización Bidireccional
 **Ruta:** `POST /extension/update`  
-**Permiso:** `canEditExtensions()`  
-**Descripción:** Actualiza una extensión tanto en la **central Grandstream** como en la **BD local**.
+**Permiso:** `canEditExtensions()`
 
-**Proceso completo (6 fases):**
-1. **Validación:** extension, first_name, last_name, email, phone, permission, max_contacts, secret
-2. **Conexión:** Verifica conexión con la central (`testConnection()`)
-3. **Obtener ID:** Consulta `getUser` para obtener el `user_id` interno de la central
-4. **Preparar datos:** Traduce permisos (Internal → internal, National → internal-local-national, etc.) y DND (boolean → yes/no)
-5. **Enviar cambios:** Dos peticiones a la API:
-   - `updateUser`: Datos de identidad (nombre, apellido, email, teléfono)
-   - `updateSIPAccount`: Config SIP (permisos, contactos, DND, secret)
-6. **Verificar y guardar:** Si ambas peticiones exitosas → `applyChanges` + actualizar BD local
+**Proceso completo en 6 fases:**
+
+```
+Fase 1          Fase 2          Fase 3          Fase 4          Fase 5          Fase 6
+VALIDAR    →    CONECTAR    →   OBTENER ID  →   PREPARAR    →   ENVIAR A    →   VERIFICAR
+Request         testConnection   getUser         Mapear datos    API PBX         Y GUARDAR
+                                 (user_id)       PBX format      2 peticiones    BD local
+```
+
+| Fase | Descripción | Endpoint API | Error handling |
+|---|---|---|---|
+| 1. Validación | Valida: extension, first_name, last_name, email, phone, permission, max_contacts, secret | — | ValidationException |
+| 2. Conexión | Verifica conectividad con la central | `testConnection()` | Redirect con error |
+| 3. Obtener ID | Consulta `getUser` para obtener el `user_id` interno de la central (distinto al ID de BD) | `getUser` | Redirect con error si no existe |
+| 4. Preparar | Traduce permisos locales a formato API + convierte DND boolean → `yes`/`no` | — | — |
+| 5. Enviar | **Dos peticiones separadas** a la API: `updateUser` (datos identity) + `updateSIPAccount` (config SIP) + `applyChanges` para persistir en la PBX | `updateUser`, `updateSIPAccount`, `applyChanges` | Redirect parcial si solo una falla |
+| 6. Guardar | Si ambas API calls exitosas → actualiza modelo Extension en BD local | — | — |
+
+**Mapeo de permisos (local → API):**
+
+| Formato Local | Formato API Grandstream |
+|---|---|
+| `Internal` | `internal` |
+| `Local` | `internal-local` |
+| `National` | `internal-local-national` |
+| `International` | `internal-local-national-international` |
 
 ---
 
-#### `updateName(Request $request)`
-**Ruta:** (no mapeada en rutas explícitamente)  
-**Descripción:** Actualiza solo el nombre personalizado (`fullname`) de una extensión.
+#### `updateName(Request $request)` — Edición de Nombre Local
+Solo actualiza el campo `fullname` (alias) en la BD local, **sin tocar la central PBX**. Usado desde el dashboard para etiquetar extensiones rápidamente.
 
 ---
 
-#### `updateIps()`
+#### `updateIps()` — Actualización Masiva de IPs
 **Ruta:** `POST /extension/update-ips`  
-**Permiso:** `canUpdateIps()`  
-**Descripción:** Actualiza las IPs de TODAS las extensiones desde la API.
+**Permiso:** `canUpdateIps()`
 
-**Lógica:**
-1. Llama a `listAccount` con opciones `extension,addr`
-2. Itera cada cuenta y actualiza el campo `ip` en BD local
-3. Si `addr` es `-` o vacío, guarda `null`
+Llama a `listAccount` con opciones `extension,addr`. Itera todas las cuentas y actualiza el campo `ip` en BD local. Si `addr` es `-` o vacío → guarda `null` (dispositivo offline).
 
 ---
 
-#### `getCallForwarding(Request $request)`
+#### `getCallForwarding(Request $request)` — Consulta de Desvíos
 **Ruta:** `GET /extension/forwarding`  
-**Respuesta:** JSON  
-**Descripción:** Obtiene la configuración de desvíos de llamadas de una extensión.
+**Respuesta:** JSON
 
-**Retorna:**
-- Estado de presencia actual (`available`, `away`, `dnd`, etc.)
-- Configuración de forwarding: CFB (busy), CFN (no answer), CFU (unconditional)
-- Lista de colas disponibles
+Consulta la configuración actual de call forwarding de una extensión:
+
+| Dato | Descripción |
+|---|---|
+| `timetype` | Perfil horario activo: 0=Siempre, 1=Oficina, 2=Fuera oficina, 3=Feriados, 4=Fines semana |
+| `presence_status` | Estado de presencia actual del agente: `available`, `away`, `chat`, `dnd`, etc. |
+| `cfu` | Call Forward Unconditional: `{dest_type, destination}` |
+| `cfb` | Call Forward Busy: `{dest_type, destination}` |
+| `cfn` | Call Forward No Answer: `{dest_type, destination}` |
+| `queues` | Lista de colas disponibles para usar como destino de desvío |
 
 ---
 
-#### `updateCallForwarding(Request $request)`
+#### `updateCallForwarding(Request $request)` — Actualización de Desvíos
 **Ruta:** `POST /extension/forwarding`  
-**Permiso:** `canEditExtensions()`  
-**Respuesta:** JSON  
-**Descripción:** Actualiza desvíos de llamadas. **IMPORTANTE:** Cada desvío se envía por separado con `applyChanges` posterior para que la PBX auto-detecte el tipo de destino.
+**Permiso:** `canEditExtensions()`
+
+> **DETALLE CRÍTICO DE IMPLEMENTACIÓN:** Cada desvío (CFU, CFB, CFN) se envía por separado a la API con un `applyChanges` posterior y una **pausa de 500ms** entre cada uno. Esto es obligatorio porque la PBX Grandstream auto-detecta el tipo de destino (extensión vs cola vs número externo) y enviar todos juntos confunde el mecanismo de detección.
+
+**Flujo por cada tipo de desvío:**
+1. Envía `updateSIPAccount` con el desvío específico (ej: `cfb_destination=6500`)
+2. Llama a `applyChanges` para que la PBX procese y detecte el tipo
+3. Espera 500ms
+4. Repite para el siguiente desvío
 
 ---
 
 ## 3. `PbxConnectionController` (app/Http/Controllers/PbxConnectionController.php)
 
-**Propósito:** Gestión completa de centrales PBX: CRUD, selección, sincronización.
+**Propósito:** Gestión completa del ciclo de vida de centrales PBX: CRUD, selección con control de acceso multi-tenant, y proceso de sincronización inicial paso a paso. Es el controlador más complejo en términos de seguridad y control de acceso.
 
 **Trait usado:** `GrandstreamTrait`
 
 ### Métodos Públicos
 
-#### `index(): View`
-**Ruta:** `GET /pbx`  
-**Descripción:** Lista centrales PBX. **Filtra por acceso del usuario:**
-- **Admin:** Ve todas las centrales
-- **No admin:** Solo ve centrales con estado `ready` que tenga asignadas en la tabla pivot `pbx_connection_user`
+#### `index(): View` — Selector de Centrales con Control de Acceso
+**Ruta:** `GET /pbx`
+
+**Filtrado por rol — regla de negocio clave:**
+- **Admin:** Ve **todas** las centrales del sistema, independientemente de su estado
+- **No admin:** Solo ve centrales con estado `ready` que tenga asignadas en la tabla pivot `pbx_connection_user`. Nunca ve centrales en `pending`, `syncing` o `error`
+
+> Esta diferenciación garantiza que usuarios regulares nunca vean centrales en estado no operativo, mientras los admin pueden administrar el ciclo completo.
 
 ---
 
-#### `store(Request $request): RedirectResponse`
-**Ruta:** `POST /pbx` (Solo admin)  
-**Descripción:** Crea nueva central con estado `pending`, redirige a setup.
+#### `store(Request $request): RedirectResponse` — Crear Central
+**Ruta:** `POST /pbx`  
+**Middleware:** `admin`
+
+Crea nueva central con estado `pending` y redirige al asistente de setup. La contraseña se encripta automáticamente por el cast `encrypted` del modelo.
 
 ---
 
-#### `update(Request $request, PbxConnection $pbx): RedirectResponse`
-**Ruta:** `PUT /pbx/{pbx}` (Solo admin)  
-**Descripción:** Actualiza datos de una central. Si no se envía password, no se modifica.
+#### `update(Request $request, PbxConnection $pbx): RedirectResponse` — Editar Central
+**Ruta:** `PUT /pbx/{pbx}`  
+**Middleware:** `admin`
+
+Si no se envía password en el formulario → no se modifica la contraseña existente (patrón common de "dejar vacío para mantener").
 
 ---
 
-#### `destroy(PbxConnection $pbx): RedirectResponse`
-**Ruta:** `DELETE /pbx/{pbx}` (Solo admin)  
-**Descripción:** Elimina central y TODOS sus datos relacionados (calls y extensions) usando `withoutGlobalScope`.
+#### `destroy(PbxConnection $pbx): RedirectResponse` — Eliminar Central
+**Ruta:** `DELETE /pbx/{pbx}`  
+**Middleware:** `admin`
+
+**Eliminación en cascada manual:**
+1. Elimina todas las `calls` de la central usando `Call::withoutGlobalScope('current_pbx')` → necesario porque los Global Scopes filtrarían por la central activa, no por la que se elimina
+2. Elimina todas las `extensions` de la misma forma
+3. Elimina la central → la tabla pivot `pbx_connection_user` se limpia por `CASCADE DELETE` en FK
+
+> **¿Por qué no usar `onDelete('cascade')` en las FK de calls/extensions?** Porque las FK son nullable (para migración gradual) y los Global Scopes interferirían con la eliminación automática.
 
 ---
 
-#### `select(PbxConnection $pbx): RedirectResponse`
-**Ruta:** `GET /pbx/select/{pbx}`  
-**Descripción:** Selecciona una central para trabajar. **Verifica autorización:** los usuarios no-admin deben tener la central asignada en la tabla pivot, o se retorna error 403. Lógica de redirección:
-- Si `ready` → Dashboard
-- Si `syncing` y admin → Setup
-- Si `pending` y admin → Setup
-- Si no `ready` y no admin → Error
+#### `select(PbxConnection $pbx): RedirectResponse` — Selección con Autorización
+**Ruta:** `GET /pbx/select/{pbx}`
+
+**Flujo de autorización multi-tenant:**
+
+```
+¿Es admin? ──Sí──► Acceso permitido
+     │
+    No
+     │
+     ▼
+¿Tiene central    ──No──► 403 Forbidden
+ asignada en           ("No tienes acceso a esta central")
+ tabla pivot?
+     │
+    Sí
+     │
+     ▼
+¿Estado ready? ──No──► Redirect con error
+     │                 ("La central no está lista")
+    Sí
+     │
+     ▼
+Guardar en sesión → Redirect a Dashboard
+```
+
+**Lógica de redirección según estado:**
+| Estado | Admin | No-Admin |
+|---|---|---|
+| `ready` | → Dashboard | → Dashboard |
+| `syncing` | → Setup (ver progreso) | → Error |
+| `pending` | → Setup (configurar) | → Error |
+| `error` | → Setup (reintentar) | → Error |
 
 ---
 
-#### `setup(PbxConnection $pbx): View`
-**Ruta:** `GET /pbx/setup/{pbx}` (Solo admin)  
-**Vista:** `pbx.setup`  
-**Descripción:** Página de configuración/sincronización inicial. Muestra conteo de extensiones y llamadas.
+#### `setup(PbxConnection $pbx): View` — Asistente de Sincronización
+**Ruta:** `GET /pbx/setup/{pbx}`  
+**Middleware:** `admin`  
+**Vista:** `pbx.setup`
+
+Muestra la página de sincronización inicial con conteo actual de extensiones y llamadas. El frontend implementa un componente Alpine.js (`syncManager()`) que orquesta el proceso paso a paso.
 
 ---
 
-#### `checkSyncStatus(PbxConnection $pbx): JsonResponse`
-**Ruta:** `GET /pbx/sync-status/{pbx}`  
-**Descripción:** Endpoint AJAX para verificar progreso de sincronización.
+#### `syncExtensions(PbxConnection $pbx): JsonResponse` — Sync de Extensiones
+**Ruta:** `POST /pbx/sync-extensions/{pbx}`  
+**Middleware:** `admin`
 
----
-
-#### `syncExtensions(PbxConnection $pbx): JsonResponse`
-**Ruta:** `POST /pbx/sync-extensions/{pbx}` (Solo admin)  
-**Descripción:** Sincroniza TODAS las extensiones desde la central. Proceso:
+**Proceso detallado:**
 1. Marca central como `syncing`
-2. Llama a `listUser` para obtener lista
-3. Para cada usuario, obtiene detalles SIP con `getSIPAccount`
-4. Parsea permisos y guarda con `updateOrCreate`
+2. Llama a `listUser` → obtiene lista de todas las extensiones
+3. Para cada usuario:
+   - Obtiene detalles SIP con `getSIPAccount` (permisos, DND, max_contacts)
+   - Parsea permisos API → formato local con `parseExtensionPermission()`
+   - Ejecuta `updateOrCreate` por `{extension, pbx_connection_id}`
+4. Si error en cualquier paso → marca como `error` con `sync_message`
 
 ---
 
-#### `syncCalls(Request $request, PbxConnection $pbx): JsonResponse`
-**Ruta:** `POST /pbx/sync-calls/{pbx}` (Solo admin)  
-**Descripción:** Sincroniza llamadas por mes (recibe `year` y `month`). Usa `cdrapi` y procesa CDRs.
+#### `syncCalls(Request $request, PbxConnection $pbx): JsonResponse` — Sync de Llamadas
+**Ruta:** `POST /pbx/sync-calls/{pbx}`  
+**Middleware:** `admin`
+
+Sincroniza llamadas de un **mes específico** (recibe `year` y `month`). El frontend itera los 12 meses secuencialmente, llamando a este endpoint una vez por mes.
+
+**Proceso por mes:**
+1. Calcula rango del mes completo (1ro al último día)
+2. Llama a `cdrapi` con formato fecha `YYYY-MM-DDTHH:MM:SS`
+3. Procesa CDRs: `collectCdrSegments()` → `consolidateCallData()` → `updateOrCreate`
 
 ---
 
-#### `finishSync(PbxConnection $pbx): JsonResponse`
-**Ruta:** `POST /pbx/finish-sync/{pbx}` (Solo admin)  
-**Descripción:** Marca la sincronización como completada (status → `ready`).
+#### `finishSync(PbxConnection $pbx): JsonResponse` — Finalizar Sincronización
+**Ruta:** `POST /pbx/finish-sync/{pbx}`  
+**Middleware:** `admin`
+
+Marca `status = ready`, registra `last_sync_at = now()`, limpia `sync_message`.
 
 ---
 
-#### `disconnect(): RedirectResponse`
-**Ruta:** `POST /pbx/disconnect` (Solo admin)  
-**Descripción:** Limpia la sesión de la central activa.
+#### `checkSyncStatus(PbxConnection $pbx): JsonResponse` — Polling de Estado
+**Ruta:** `GET /pbx/sync-status/{pbx}`
+
+Endpoint AJAX para verificar progreso de sincronización. Retorna `{status, sync_message, extension_count, call_count}`. El frontend hace polling cada 2 segundos.
 
 ---
 
-### Métodos Privados
+#### `disconnect(): RedirectResponse` — Desconectar Central
+**Ruta:** `POST /pbx/disconnect`
 
-| Método | Descripción |
-|---|---|
-| `validatePbx(Request, bool)` | Valida datos de formulario PBX |
-| `setActivePbx(PbxConnection)` | Guarda ID y nombre de la central en sesión |
-| `setPbxConnection(PbxConnection)` | Configura la sesión para el trait |
-| `collectCdrSegments(array)` | Recolecta segmentos CDR recursivamente |
-| `consolidateCallData(array)` | Consolida múltiples segmentos en un registro |
-| `esAnexo(string)` | ¿Es extensión interna? (3-4 dígitos) |
-| `esExterno(string)` | ¿Es número externo? (>4 dígitos o empieza con + o 9) |
-| `parseExtensionPermission(string)` | Traduce formato API → formato local |
-| `determineCallType(string)` | Clasifica tipo: Interna, Celular, Nacional, Internacional |
+Limpia `active_pbx_id` y `active_pbx_name` de la sesión. Redirige al selector de centrales.
+
+---
+
+### Métodos Privados — Procesamiento de Datos
+
+| Método | Descripción | Detalle |
+|---|---|---|
+| `validatePbx(Request, bool)` | Valida formulario de central | Reglas: name required, ip required+ip, port integer 1-65535, username/password required (pass no required en update) |
+| `setActivePbx(PbxConnection)` | Persiste central en sesión | Guarda `active_pbx_id` y `active_pbx_name` en `session()` |
+| `setPbxConnection(PbxConnection)` | Configura trait para API calls | Inyecta el modelo en `GrandstreamService` |
+| `collectCdrSegments(array)` | Extrae segmentos CDR recursivamente | Recorre estructura jerárquica de `cdrapi` (main_cdr → sub_cdr) |
+| `consolidateCallData(array)` | Fusiona múltiples segmentos en 1 registro | Determina entrante/saliente, suma durations, asigna disposition final |
+| `esAnexo(string)` | ¿Es extensión interna? | Regex: `^\d{3,4}$` |
+| `esExterno(string)` | ¿Es número externo? | >4 dígitos O empieza con `+` O empieza con `9` |
+| `parseExtensionPermission(string)` | Traduce formato API → local | `*international*` → `International`, etc. |
+| `determineCallType(string)` | Clasifica tipo de llamada | Usa mismos patrones regex que `Call::getCallTypeAttribute()` |
 
 ---
 
 ## 4. `StatsController` (app/Http/Controllers/StatsController.php)
 
-**Propósito:** Estadísticas y KPIs de colas de llamadas.
+**Propósito:** Dashboard de Contact Center con KPIs operativos de colas de llamadas. Proporciona visibilidad sobre el rendimiento del equipo de atención, tiempos de espera y tasas de abandono. Diseñado para supervisores y gerentes de operaciones.
 
 ### Métodos Públicos
 
-#### `index(Request $request)`
+#### `index(Request $request)` — Dashboard KPI Completo
 **Ruta:** `GET /stats/kpi-turnos`  
-**Vista:** `stats.kpi-turnos`  
-**Descripción:** Muestra KPIs completos de colas (EXCLUSIVO PARA QUEUE).
+**Vista:** `stats.kpi-turnos`
 
-**Datos enviados a la vista:**
-- `kpisPorHora`: KPIs por franja horaria (08:00-20:00)
-- `kpisPorCola`: KPIs agrupados por número de cola
-- `totales`: Totales globales
-- `rendimientoAgentes`: Métricas por agente
-- `agentesPorCola`: Agentes detallados por cola
-- `colasDisponibles`: Lista de colas para filtrar
-- `ultimaSincronizacion`: Fecha de última sincronización
+**Datos enviados a la vista (7 datasets):**
 
----
+| Variable | Tipo | Descripción | Fuente SQL |
+|---|---|---|---|
+| `kpisPorHora` | array[hora → metrics] | KPIs por franja horaria (08:00-20:00) | `GROUP BY HOUR(call_time)` |
+| `kpisPorCola` | array[cola → metrics] | KPIs agrupados por número de cola | `GROUP BY queue` |
+| `totales` | array | Totales globales de todas las franjas | Sumatoria PHP de kpisPorHora |
+| `rendimientoAgentes` | array[agente → metrics] | Métricas por agente individual | `GROUP BY agent` |
+| `agentesPorCola` | array[cola → agentes[]] | Detalle de agentes por cada cola | `GROUP BY queue, agent` |
+| `colasDisponibles` | array | Lista de colas para el select de filtro | DISTINCT de `calls.action_type` + `queue_call_details.queue` |
+| `ultimaSincronizacion` | Carbon\|null | Fecha de última sincronización de datos | `MAX(created_at)` |
 
-#### `apiKpis(Request $request)`
-**Ruta:** `GET /stats/kpi-turnos/api`  
-**Respuesta:** JSON  
-**Descripción:** Endpoint API para obtener KPIs (útil para gráficos AJAX).
+**Fórmulas KPI por franja horaria:**
 
----
+| KPI | Fórmula | Descripción |
+|---|---|---|
+| Volumen | `COUNT(*)` | Total de intentos de llamada en la cola |
+| Atendidas | `SUM(connected = 1)` | Llamadas efectivamente contestadas |
+| Abandonadas | `SUM(connected = 0)` | Llamadas que no conectaron con agente |
+| % Abandono | $(abandonadas / volumen) \times 100$ | Tasa de abandono — KPI crítico de servicio |
+| Espera Promedio | $\frac{\sum wait\_time_{connected}}{count_{connected}}$ | Tiempo medio de espera de llamadas atendidas |
+| ASA | $\frac{\sum talk\_time_{connected}}{count_{connected}}$ | Average Speed of Answer (tiempo promedio de conversación) |
+| Agentes | `DISTINCT agent` | Lista de agentes únicos activos en la franja |
 
-#### `sincronizarColas(Request $request)`
-**Ruta:** `POST /stats/kpi-turnos/sync`  
-**Permiso:** Solo admin  
-**Descripción:** Ejecuta el comando `sync:queue-stats` via `Artisan::call()`.
+**Rendimiento por agente:**
 
----
-
-### Métodos Privados
-
-| Método | Descripción |
+| Métrica | Fórmula |
 |---|---|
-| `calcularKpisPorHora(fechaInicio, fechaFin, ?cola)` | Calcula volumen, atendidas, abandonadas, % abandono, ASA por franja horaria. **Fuente: `queue_call_details`** |
-| `obtenerRendimientoAgentes(fechaInicio, fechaFin, ?cola)` | Métricas por agente: llamadas atendidas, tiempo promedio, tasa de atención. **Fuente: `queue_call_details`** |
-| `calcularTotales(kpisPorHora)` | Suma global de todos los KPIs por hora |
-| `calcularKpisPorCola(fechaInicio, fechaFin)` | KPIs agrupados por cola: volumen, atendidas, abandonadas, ASA |
-| `obtenerColasDisponibles()` | Obtiene colas únicas combinando `calls.action_type` y `queue_call_details.queue` |
-| `obtenerAgentesPorCola(fechaInicio, fechaFin)` | Estadísticas detalladas de agentes por cola |
-| `extraerAgente(?dstChannel, ?dstanswer, ?channel, ?source)` | Extrae número de agente de canales SIP (PJSIP/2000-xxx) |
-| `extraerCola(?actionType)` | Extrae número de cola de action_type (QUEUE[6500] → 6500) |
+| Llamadas totales | `COUNT(*)` por agente |
+| Llamadas atendidas | `SUM(connected = 1)` |
+| Tasa de atención | $(atendidas / totales) \times 100$ |
+| Tiempo total | `SUM(talk_time)` por agente |
+| Tiempo promedio | `AVG(talk_time WHERE connected = 1)` |
+| Espera promedio | `AVG(wait_time)` por agente |
+
+> **Optimización:** Todas las agregaciones se realizan con `DB::raw()` y `GROUP BY` en SQL, evitando cargar registros individuales en PHP.
+
+---
+
+#### `apiKpis(Request $request)` — API JSON para Gráficos
+**Ruta:** `GET /stats/kpi-turnos/api`
+
+Mismo cálculo que `index()` pero retorna JSON puro. Útil para actualizaciones AJAX o futuros dashboards SPA.
+
+---
+
+#### `sincronizarColas(Request $request)` — Ejecutar Sincronización
+**Ruta:** `POST /stats/kpi-turnos/sync`  
+**Permiso:** Solo admin
+
+Ejecuta `Artisan::call('sync:queue-stats', ['--days' => $days, '--pbx' => $activePbxId])`. El parámetro `days` viene del formulario (opciones: 1, 7, 15, 30 días).
+
+---
+
+### Métodos Privados — Motor de Cálculo KPI
+
+| Método | Descripción | Detalle técnico |
+|---|---|---|
+| `calcularKpisPorHora(fechaInicio, fechaFin, ?cola)` | Calcula todos los KPIs por franja horaria (08:00-20:00) | `HOUR(call_time)` como agrupador. Fuente: `queue_call_details`. Filtra por cola opcional |
+| `obtenerRendimientoAgentes(fechaInicio, fechaFin, ?cola)` | Métricas individuales por agente | `GROUP BY agent WHERE agent != 'NONE'`. Excluye intentos sin agente |
+| `calcularTotales(kpisPorHora)` | Suma global de todos los KPIs por hora | Sumatoria PHP de los arrays ya calculados (evita segunda query) |
+| `calcularKpisPorCola(fechaInicio, fechaFin)` | KPIs independientes por cola | `GROUP BY queue`. Permite comparar rendimiento entre colas |
+| `obtenerColasDisponibles()` | Lista de colas únicas para filtro | Combina `calls.action_type` (regex `QUEUE\[\d+\]`) + `queue_call_details.queue` |
+| `obtenerAgentesPorCola(fechaInicio, fechaFin)` | Estadísticas de agentes por cola | `GROUP BY queue, agent`. Incluye efectividad por agente |
+| `extraerAgente(?dstChannel, ?dstanswer, ?channel, ?source)` | Extrae extensión de agente de canales SIP | Regex `PJSIP/(\d+)-` sobre strings como `PJSIP/2000-00006d19` → `2000` |
+| `extraerCola(?actionType)` | Extrae número de cola de action_type | Regex `QUEUE\[(\d+)\]` sobre strings como `QUEUE[6500]` → `6500` |
 
 ---
 
 ## 5. `UserController` (app/Http/Controllers/UserController.php)
 
-**Propósito:** CRUD completo de usuarios del sistema + endpoints API para el modal en la página de centrales PBX.
+**Propósito:** Gestión completa de usuarios con dos interfaces: CRUD tradicional (vistas Blade) + API REST JSON (para modal interactivo en la página de centrales PBX). Implementa control de acceso a centrales vía tabla pivot `pbx_connection_user`.
 
 ### Métodos de Vistas (CRUD Estándar)
 
-| Método | Ruta | Descripción |
-|---|---|---|
-| `index()` | `GET /usuarios` | Lista usuarios paginados (15) |
-| `create()` | `GET /usuarios/crear` | Formulario de creación |
-| `store(Request)` | `POST /usuarios` | Crea usuario. Si rol=admin, otorga todos los permisos. Hashea password |
-| `edit(User)` | `GET /usuarios/{user}/editar` | Formulario de edición. **No permite editarse a sí mismo** |
-| `update(Request, User)` | `PUT /usuarios/{user}` | Actualiza usuario. Password opcional. Si rol=admin, otorga todos los permisos |
-| `destroy(User)` | `DELETE /usuarios/{user}` | Elimina usuario. **No permite eliminar último admin ni a sí mismo** |
+| Método | Ruta | Descripción | Reglas de negocio |
+|---|---|---|---|
+| `index()` | `GET /usuarios` | Lista usuarios paginados (15/página) | Muestra badges de permisos y rol por usuario |
+| `create()` | `GET /usuarios/crear` | Formulario de creación con selector de permisos | Alpine.js auto-activa permisos si rol=admin |
+| `store(Request)` | `POST /usuarios` | Crea usuario | Si rol=admin → activa todos los `can_*` a true. Password hasheado con bcrypt |
+| `edit(User)` | `GET /usuarios/{user}/editar` | Formulario de edición | **No permite editarse a sí mismo** — redirige con error |
+| `update(Request, User)` | `PUT /usuarios/{user}` | Actualiza usuario | Password opcional. Si rol=admin → fuerza permisos true |
+| `destroy(User)` | `DELETE /usuarios/{user}` | Elimina usuario | **Protecciones:** No permite eliminar último admin NI a sí mismo |
 
-### Métodos API (para modal en PBX index)
+### Métodos API (Modal de Gestión en PBX Index)
 
-| Método | Ruta | Descripción |
-|---|---|---|
-| `apiIndex()` | `GET /api/usuarios` | Retorna JSON con lista de usuarios (incluyendo `allowed_pbx_ids` por usuario) y lista de centrales PBX disponibles (`pbxConnections` con id, name, ip) |
-| `apiStore(Request)` | `POST /api/usuarios` | Crea usuario via JSON. Valida `allowed_pbx_ids` (array de IDs de pbx_connections). Sincroniza tabla pivot `pbx_connection_user` |
-| `apiUpdate(Request, User)` | `PUT /api/usuarios/{user}` | Actualiza usuario via JSON. Sincroniza centrales permitidas en tabla pivot |
-| `apiDestroy(User)` | `DELETE /api/usuarios/{user}` | Elimina usuario via JSON. No permite eliminar último admin ni a sí mismo |
+Estos endpoints sirven al componente Alpine.js `userManager()` embebido en `pbx/index.blade.php`, permitiendo gestionar usuarios directamente desde la página de centrales.
+
+| Método | Ruta | Response | Descripción |
+|---|---|---|---|
+| `apiIndex()` | `GET /api/usuarios` | JSON | Retorna: lista de usuarios con `allowed_pbx_ids` (array de IDs de centrales asignadas) + lista de `pbxConnections` disponibles (id, name, ip) |
+| `apiStore(Request)` | `POST /api/usuarios` | JSON | Crea usuario. Acepta `allowed_pbx_ids[]` para sincronizar tabla pivot |
+| `apiUpdate(Request, User)` | `PUT /api/usuarios/{user}` | JSON | Actualiza usuario + `sync()` de centrales permitidas en pivot |
+| `apiDestroy(User)` | `DELETE /api/usuarios/{user}` | JSON | Elimina usuario. Mismas protecciones que `destroy()`. La tabla pivot se limpia por CASCADE |
+
+**Campo `allowed_pbx_ids` en la API:**
+- Tipo: `array` de integers
+- Validación: `exists:pbx_connections,id`
+- Se sincroniza con `$user->pbxConnections()->sync($ids)`
+- Si un admin se crea sin `allowed_pbx_ids`, no importa — los admin no necesitan asignación pivot
 
 ---
 
 ## 6. `SettingController` (app/Http/Controllers/SettingController.php)
 
-**Propósito:** Gestión de tarifas de llamadas.
+**Propósito:** Gestión de tarifas de facturación de llamadas. Interfaz simple con impacto financiero directo en los costos calculados en el dashboard CDR.
 
-| Método | Ruta | Permiso | Descripción |
-|---|---|---|---|
-| `index()` | `GET /tarifas` | - | Muestra página de configuración de tarifas |
-| `update(Request)` | `POST /tarifas` | `canEditRates()` | Actualiza valores de tarifas |
+| Método | Ruta | Permiso | Descripción | Efecto |
+|---|---|---|---|---|
+| `index()` | `GET /tarifas` | Lectura libre | Muestra las 3 tarifas en cards editables | — |
+| `update(Request)` | `POST /tarifas` | `canEditRates()` | Actualiza valores de tarifas con `Setting::updateOrCreate()` | Llama `Call::clearPricesCache()` para invalidar la cache estática del modelo Call |
+
+> **Impacto:** Cambiar una tarifa afecta **inmediatamente** el cálculo de costos en todo el dashboard. Los costos no se almacenan en la BD — se calculan dinámicamente por el accessor `getCostAttribute()` del modelo `Call`.
 
 ---
 
 ## 7. `AuthController` (app/Http/Controllers/AuthController.php)
 
-**Propósito:** Autenticación personalizada (login/logout).
+**Propósito:** Autenticación personalizada independiente de Laravel Breeze. Usa `name` (no `email`) como campo de login.
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `showLogin()` | `GET /login` | Muestra formulario de login |
-| `login(Request)` | `POST /login` | Autentica usuario por `name` + `password`. **Easter egg:** si name=doom y password=doom → redirige a ruta `doom` |
-| `logout(Request)` | `POST /logout` | Cierra sesión, invalida y regenera token |
+| `showLogin()` | `GET /login` | Vista de login standalone (sin layout Breeze). Card minimalista centrada |
+| `login(Request)` | `POST /login` | Autentica por `name` + `password`. Rate limited: `throttle:10,1` (10 intentos/minuto). Easter egg: si name=doom y password=doom → redirige a ruta `doom` (juego DOOM en navegador) |
+| `logout(Request)` | `POST /logout` | Cierra sesión + invalida session + regenera CSRF token |
 
 ---
 
 ## 8. `EstadoCentral` (app/Http/Controllers/EstadoCentral.php)
 
-**Propósito:** Muestra estado del sistema/uptime de la central.
+**Propósito:** Muestra información de estado y uptime de la central PBX conectada.
 
 **Trait usado:** `GrandstreamTrait`
 
 | Método | Descripción |
 |---|---|
-| `index()` | Renderiza vista `welcome` con datos del sistema |
-| `getSystemData(): array` | Obtiene uptime de la central vía `getSystemStatus`. Retorna `['uptime' => string]` |
+| `index()` | Renderiza vista `welcome` con datos del sistema obtenidos de la API |
+| `getSystemData(): array` | Llama a `getSystemStatus` en la API Grandstream. Retorna `['uptime' => string]` con el tiempo activo de la central |
+
+---
+
+## 9. `IPController` (app/Http/Controllers/IPController.php)
+
+**Propósito:** Vista de monitoreo de IPs de extensiones en tiempo real.
+
+| Método | Descripción |
+|---|---|
+| `index()` | Renderiza vista con lista de extensiones y sus IPs actuales |
+| `fetchLiveAccounts(): array` | Obtiene cuentas activas desde la API `listAccount` |
+| `parseAddress(string): string` | Extrae IP de la cadena de dirección retornada por la API |
+
+---
+
+## 10. `ProfileController` (app/Http/Controllers/ProfileController.php)
+
+**Propósito:** Gestión del perfil del usuario autenticado. Provisto por Laravel Breeze con modificaciones mínimas.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `edit()` | `GET /profile` | Formulario de edición de perfil (nombre + email) |
+| `update()` | `PATCH /profile` | Actualiza perfil. Usa `ProfileUpdateRequest` para validación |
+| `destroy()` | `DELETE /profile` | Elimina cuenta propia (solicita confirmación de contraseña) |
+
+---
+
+## Trait Compartido: `ProcessesCdr` (app/Http/Controllers/Concerns/ProcessesCdr.php)
+
+**Usado por:** `CdrController`  
+**Propósito:** Lógica reutilizable para procesar la estructura jerárquica de CDRs que retorna la API de Grandstream.
+
+| Método | Visibilidad | Descripción |
+|---|---|---|
+| `collectCdrSegments(array)` | protected | Recorrido recursivo de la estructura CDR. Los CDRs de Grandstream llegan como árboles con `main_cdr` y `sub_cdr` anidados. Este método aplana la estructura en un array lineal de segmentos |
+| `consolidateCdrSegments(array)` | protected | Fusiona N segmentos en 1 registro de llamada: usa earliest `start_time`, suma `duration`/`billsec`, determina si es entrante o saliente, asigna disposition final (`ANSWERED` si algún segmento tiene `billsec > 0`) |
+| `isExtension(string)` | protected | Regex `^\d{3,4}$` — ¿es extensión interna? |
+| `isExternalNumber(string)` | protected | Longitud > 4 o empieza con `+` — ¿es número externo? |
+
+**Regla de consolidación de calls entrantes:**
+Cuando se detecta una llamada entrante (source externo + destination interna), el sistema **invierte** source y destination para que el registro final muestre la extensión interna como `source` y el número externo como `destination`. Esto mantiene consistencia con la perspectiva del usuario del panel.
 
 ---
 

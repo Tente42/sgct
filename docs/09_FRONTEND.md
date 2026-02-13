@@ -1,4 +1,49 @@
-# 09 - DOCUMENTACIÓN FRONTEND
+# 09 — DOCUMENTACIÓN FRONTEND
+
+> Documenta todas las vistas Blade, componentes Alpine.js, gráficos Chart.js, estilos CSS y funciones JavaScript del sistema. El frontend sigue un patrón **Server-Side Rendering** con reactividad selectiva via Alpine.js.
+
+---
+
+## Arquitectura Frontend
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    Browser (Cliente)                     │
+├──────────────────────────────────────────────────────────┤
+│                                                          │
+│  Blade (SSR)          Alpine.js (reactivity)             │
+│  ┌────────────┐       ┌──────────────────────┐           │
+│  │ Layouts    │       │ extensionEditor()    │           │
+│  │ Partials   │       │ pbxManager()         │           │
+│  │ Components │       │ syncManager()        │           │
+│  │ Sections   │       │ userForm()           │           │
+│  └────────────┘       │ userManager()        │           │
+│                       └──────────────────────┘           │
+│  Chart.js (CDN)       Fetch API / Axios                  │
+│  ┌────────────┐       ┌──────────────────────┐           │
+│  │ Pie        │       │ CSRF Token (meta)    │           │
+│  │ Line       │       │ JSON endpoints       │           │
+│  │ Bar        │       │ Polling (sync status)│           │
+│  │ Area       │       └──────────────────────┘           │
+│  └────────────┘                                          │
+│                                                          │
+│  Tailwind CSS         Font Awesome (CDN)                 │
+│  ┌────────────┐       ┌──────────────────────┐           │
+│  │ Utilities  │       │ Iconos SVG           │           │
+│  │ Custom CSS │       │ v6.5.2               │           │
+│  │ Animations │       └──────────────────────┘           │
+│  └────────────┘                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Patrón de comunicación:**
+- **Navegación/CRUD**: Formularios Blade estándar (POST/PUT/DELETE con CSRF)
+- **Modales y interacción**: Alpine.js con `x-data`, `x-show`, `x-model`
+- **Datos asíncronos**: `fetch()` con headers CSRF para JSON endpoints
+- **Progreso/Polling**: `setInterval` cada 2s para estados de sincronización
+- **Gráficos**: Chart.js v4 via CDN, inicializados en `DOMContentLoaded`
+
+---
 
 ## Stack Tecnológico Frontend
 
@@ -177,12 +222,33 @@ Esta vista es el componente de navegación por defecto de Laravel Breeze. **No s
 
 ## 2. VISTAS PRINCIPALES
 
-### 2.1 `reporte.blade.php` — Reporte de Llamadas (Vista Principal)
+### 2.1 `reporte.blade.php` — Reporte de Llamadas (Vista Principal del Sistema)
 
-**Ruta:** `GET /` (`route('dashboard')`)  
+**Ruta:** `GET /` y `GET /dashboard` (`route('dashboard')`)  
 **Controlador:** `CdrController@index`  
 **Líneas:** ~280  
 **Layout:** `<x-app-layout>`
+
+> **Esta es la vista más usada del sistema.** Es la primera que ve el usuario al ingresar (después de seleccionar central). Concentra consulta, filtrado, exportación y sincronización de CDR.
+
+#### Flujo de Datos:
+
+```
+CdrController@index
+    │
+    ├── buildCallQuery($request) → Query filtrada y ordenada
+    │     ├── whereDate(start_time, >=, fecha_inicio)
+    │     ├── whereDate(start_time, <=, fecha_fin)
+    │     ├── where(source, $anexo)  (si filtro activo)
+    │     ├── tipo_llamada filter (REGEXP en userfield + source)
+    │     └── applySorting($sort, $dir) con SQL custom para type/cost
+    │
+    ├── $totalLlamadas = $query->count()
+    ├── $minutosFacturables = $query->sum('billsec') / 60
+    ├── $totalPagar = sum de cost accessor (via SQL CASE WHEN)
+    │
+    └── return view('reporte', compact(...))
+```
 
 #### Variables recibidas:
 - `$totalLlamadas`, `$minutosFacturables`, `$totalPagar` — KPIs resumen
@@ -787,27 +853,60 @@ Las vistas en `resources/views/auth/` son las estándar de Laravel Breeze:
 
 ### Comunicación Frontend-Backend
 
-| Patrón | Uso |
-|---|---|
-| **Blade Server-Side** | Rendering principal de todas las vistas |
-| **Alpine.js Reactivity** | Modales, formularios multi-paso, estados UI |
-| **Fetch API** | Llamadas AJAX (sincronización PBX, desvíos, queue stats) |
-| **CSRF Token** | Meta tag + headers X-CSRF-TOKEN en fetch |
-| **Session Flash Messages** | `session('success')`, `session('error')`, `session('warning')` |
-| **Server-Side Sorting** | Query params `sort` + `dir` |
-| **Paginación Laravel** | `->links()` con `appends()` |
-| **Permisos en UI** | `@if(Auth::user()->canXxx())` para mostrar/ocultar controles |
-
-### Interactividad Alpine.js
-
-| Vista | Componente Alpine | Funcionalidad |
+| Patrón | Uso | Ejemplo |
 |---|---|---|
-| `configuracion.blade.php` | `extensionEditor()` | Modal 2 pasos, edición de extensiones, desvíos PBX |
-| `pbx/index.blade.php` | `pbxManager()` | CRUD modales centrales PBX |
-| `pbx/setup.blade.php` | `syncManager()` | Sincronización paso a paso con progreso |
-| `users/create.blade.php` | `userForm()` | Permisos de usuario |
-| `users/edit.blade.php` | `userForm()` | Misma funcionalidad que create |
-| `layouts/app.blade.php` | inline | Sidebar toggle + sync indicator polling |
+| **Blade Server-Side** | Rendering principal de todas las vistas | `@foreach($llamadas as $call)` |
+| **Alpine.js Reactivity** | Modales, formularios multi-paso, estados UI | `x-data="extensionEditor()"` |
+| **Fetch API** | Llamadas AJAX a endpoints JSON | Sync status, desvíos, queue stats |
+| **CSRF Token** | Meta tag + headers en fetch/axios | `<meta name="csrf-token">` + `X-CSRF-TOKEN` |
+| **Session Flash Messages** | Feedback de operaciones | `session('success')`, `session('error')` |
+| **Server-Side Sorting** | Query params en URLs | `?sort=start_time&dir=desc` |
+| **Paginación Laravel** | `->links()` con preservación de filtros | `$llamadas->appends(request()->input())` |
+| **Permisos en UI** | Condicionales Blade | `@if(Auth::user()->canSyncCalls())` |
+
+### Patrón de Protección de Permisos en UI
+
+```
+Backend:                              Frontend:
+┌─────────────────┐                ┌─────────────────────────────┐
+│ abort_unless(   │                │ @if(Auth::user()->canX())   │
+│   $user->canX(),│  ← seguridad   │   <button>Acción</button>   │
+│   403           │                │ @endif                      │
+│ )               │                │                             │
+└─────────────────┘                └─────────────────────────────┘
+```
+
+> **Doble protección:** El backend siempre verifica permisos (abort 403). El frontend solo oculta botones para UX — nunca como única línea de defensa.
+
+### Interactividad Alpine.js — Componentes Principales
+
+| Vista | Componente | Complejidad | Funcionalidades |
+|---|---|---|---|
+| `configuracion.blade.php` | `extensionEditor()` | Alta | Modal 2 pasos, edición SIP, desvíos PBX, 2 POSTs secuenciales |
+| `pbx/index.blade.php` | `pbxManager()` | Media | CRUD modales centrales PBX, doble modal (edit + delete confirm) |
+| `pbx/index.blade.php` | `userManager()` | Alta | CRUD usuarios via API JSON, asignación de centrales, toggle permisos |
+| `pbx/setup.blade.php` | `syncManager()` | Alta | Sync multi-paso con polling, barra de progreso, log en terminal |
+| `users/create.blade.php` | `userForm()` | Baja | Auto-activar permisos según rol seleccionado |
+| `layouts/app.blade.php` | inline | Baja | Sidebar toggle + polling de sync indicator |
+
+### Patrón Fetch con CSRF
+
+Todas las llamadas `fetch()` en el frontend siguen este patrón:
+
+```javascript
+fetch(url, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+    },
+    body: JSON.stringify(data)
+})
+.then(r => r.json())
+.then(data => { /* actualizar UI */ })
+.catch(err => { /* mostrar error */ });
+```
 
 ### Paleta de Colores por Módulo
 

@@ -15,11 +15,11 @@ class PbxConnectionSeeder extends Seeder
         PbxConnection::updateOrCreate(
             ['id' => 1],
             [
-                'name' => 'Central Principal',
-                'ip' => '10.36.1.10',
-                'port' => 7110,
-                'username' => 'cdrapi',
-                'password' => '123api',
+                'name' => 'UCM',
+                'ip' => '12.34.56.78',
+                'port' => 9999,
+                'username' => 'username',
+                'password' => 'password',
                 'verify_ssl' => false,
             ]
         );

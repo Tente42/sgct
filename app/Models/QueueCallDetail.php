@@ -40,7 +40,7 @@ class QueueCallDetail extends Model
     protected static function booted(): void
     {
         static::addGlobalScope('pbx', function (Builder $builder) {
-            if (session()->has('active_pbx_id')) {
+            if (auth()->check() && session()->has('active_pbx_id')) {
                 $builder->where('pbx_connection_id', session('active_pbx_id'));
             }
         });

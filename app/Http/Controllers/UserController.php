@@ -12,6 +12,15 @@ use Illuminate\Validation\Rules\Password;
 class UserController extends Controller
 {
     /**
+     * Lista de permisos granulares del sistema.
+     */
+    private const PERMISSION_FIELDS = [
+        'can_sync_calls', 'can_edit_extensions', 'can_update_ips',
+        'can_edit_rates', 'can_manage_pbx', 'can_export_pdf',
+        'can_export_excel', 'can_view_charts',
+    ];
+
+    /**
      * Display a listing of users.
      */
     public function index()
@@ -54,30 +63,10 @@ class UserController extends Controller
         // Hash password
         $validated['password'] = Hash::make($validated['password']);
 
-        // Convert checkbox values to boolean (inputs send '1' or '0')
-        $permissions = [
-            'can_sync_calls', 'can_edit_extensions', 'can_update_ips',
-            'can_edit_rates', 'can_manage_pbx', 'can_export_pdf',
-            'can_export_excel', 'can_view_charts'
-        ];
-
-        foreach ($permissions as $perm) {
-            $validated[$perm] = $request->input($perm) == '1';
-        }
-
-        // If admin role, grant all permissions
-        if ($validated['role'] === 'admin') {
-            foreach ($permissions as $perm) {
-                $validated[$perm] = true;
-            }
-        }
+        $this->applyPermissions($validated, $request);
 
         $user = User::create($validated);
-
-        // Sync allowed PBX connections
-        if ($request->has('allowed_pbx_ids')) {
-            $user->pbxConnections()->sync($request->input('allowed_pbx_ids', []));
-        }
+        $this->syncPbxConnections($user, $request);
 
         return redirect()->route('users.index')
             ->with('success', 'Usuario creado exitosamente.');
@@ -137,30 +126,10 @@ class UserController extends Controller
             unset($validated['password']);
         }
 
-        // Convert checkbox values to boolean (inputs send '1' or '0')
-        $permissions = [
-            'can_sync_calls', 'can_edit_extensions', 'can_update_ips',
-            'can_edit_rates', 'can_manage_pbx', 'can_export_pdf',
-            'can_export_excel', 'can_view_charts'
-        ];
-
-        foreach ($permissions as $perm) {
-            $validated[$perm] = $request->input($perm) == '1';
-        }
-
-        // If admin role, grant all permissions
-        if ($validated['role'] === 'admin') {
-            foreach ($permissions as $perm) {
-                $validated[$perm] = true;
-            }
-        }
+        $this->applyPermissions($validated, $request);
 
         $user->update($validated);
-
-        // Sync allowed PBX connections
-        if ($request->has('allowed_pbx_ids')) {
-            $user->pbxConnections()->sync($request->input('allowed_pbx_ids', []));
-        }
+        $this->syncPbxConnections($user, $request);
 
         return redirect()->route('users.index')
             ->with('success', 'Usuario actualizado exitosamente.');
@@ -264,22 +233,10 @@ class UserController extends Controller
         $data = $validator->validated();
         $data['password'] = Hash::make($data['password']);
 
-        $permissions = [
-            'can_sync_calls', 'can_edit_extensions', 'can_update_ips',
-            'can_edit_rates', 'can_manage_pbx', 'can_export_pdf',
-            'can_export_excel', 'can_view_charts'
-        ];
-
-        foreach ($permissions as $perm) {
-            $data[$perm] = $data['role'] === 'admin' ? true : (bool) $request->input($perm);
-        }
+        $this->applyPermissions($data, $request);
 
         $user = User::create($data);
-
-        // Sync allowed PBX connections
-        if ($request->has('allowed_pbx_ids')) {
-            $user->pbxConnections()->sync($request->input('allowed_pbx_ids', []));
-        }
+        $this->syncPbxConnections($user, $request);
 
         return response()->json(['success' => true, 'message' => 'Usuario creado exitosamente.']);
     }
@@ -317,22 +274,10 @@ class UserController extends Controller
             unset($data['password']);
         }
 
-        $permissions = [
-            'can_sync_calls', 'can_edit_extensions', 'can_update_ips',
-            'can_edit_rates', 'can_manage_pbx', 'can_export_pdf',
-            'can_export_excel', 'can_view_charts'
-        ];
-
-        foreach ($permissions as $perm) {
-            $data[$perm] = $data['role'] === 'admin' ? true : (bool) $request->input($perm);
-        }
+        $this->applyPermissions($data, $request);
 
         $user->update($data);
-
-        // Sync allowed PBX connections
-        if ($request->has('allowed_pbx_ids')) {
-            $user->pbxConnections()->sync($request->input('allowed_pbx_ids', []));
-        }
+        $this->syncPbxConnections($user, $request);
 
         return response()->json(['success' => true, 'message' => 'Usuario actualizado exitosamente.']);
     }
@@ -353,5 +298,32 @@ class UserController extends Controller
         $user->delete();
 
         return response()->json(['success' => true, 'message' => 'Usuario eliminado exitosamente.']);
+    }
+
+    // ==========================================
+    // Private Helpers
+    // ==========================================
+
+    /**
+     * Aplicar permisos al array de datos del usuario.
+     * Si el rol es admin, se otorgan todos los permisos automáticamente.
+     */
+    private function applyPermissions(array &$data, Request $request): void
+    {
+        $isAdmin = ($data['role'] ?? '') === 'admin';
+
+        foreach (self::PERMISSION_FIELDS as $perm) {
+            $data[$perm] = $isAdmin ? true : (bool) $request->input($perm);
+        }
+    }
+
+    /**
+     * Sincronizar centrales PBX asignadas al usuario.
+     */
+    private function syncPbxConnections(User $user, Request $request): void
+    {
+        if ($request->has('allowed_pbx_ids')) {
+            $user->pbxConnections()->sync($request->input('allowed_pbx_ids', []));
+        }
     }
 }
