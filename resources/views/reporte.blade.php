@@ -230,11 +230,13 @@
                                             </span>
                                         @endif
 
+                                        @if(Auth::user()->canEditExtensions())
                                         <button class="text-gray-400 hover:text-gray-600"
                                                 onclick="editarNombre('{{ $cdr->source }}', '{{ $cdr->extension->fullname ?? '' }}')"
                                                 title="Editar nombre localmente">
                                             <i class="fas fa-pencil-alt"></i>
                                         </button>
+                                        @endif
                                     </div>
                                     
                                     @if($cdr->caller_name && $cdr->caller_name != $cdr->source && $cdr->caller_name != ($cdr->extension->fullname ?? ''))

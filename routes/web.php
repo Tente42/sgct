@@ -98,6 +98,8 @@ Route::middleware(['auth', 'pbx.selected'])->group(function () {
     // Funciones que requieren permisos específicos (verificados en el controlador)
     Route::post('/sync', [CdrController::class, 'syncCDRs'])->name('cdr.sync');
     Route::post('/extension/update', [ExtensionController::class, 'update'])->name('extension.update');
+    Route::post('/extension/sync', [ExtensionController::class, 'syncExtensions'])->name('extension.sync');
+    Route::get('/extension/sync-status', [ExtensionController::class, 'checkSyncStatus'])->name('extension.syncStatus');
     Route::post('/extension/update-ips', [ExtensionController::class, 'updateIps'])->name('extension.updateIps');
     Route::post('/tarifas', [SettingController::class, 'update'])->name('settings.update');
 

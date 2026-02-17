@@ -37,17 +37,24 @@
                 </a>
             </li>
             @endif
+            @if(Auth::user()->canViewExtensions())
             <li>
-                <a href="{{ route('extension.index') }}" class="relative flex flex-row items-center h-11 focus:outline-none hover:bg-gray-700 text-white-600 hover:text-white-800 border-l-4 border-transparent hover:border-indigo-500 pr-6">
+                <a href="{{ route('extension.index') }}" id="sidebarAnexosLink" class="relative flex flex-row items-center h-11 focus:outline-none hover:bg-gray-700 text-white-600 hover:text-white-800 border-l-4 border-transparent hover:border-indigo-500 pr-6">
                     <span class="inline-flex justify-center items-center ml-4">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A9 9 0 1118.879 6.196 9 9 0 015.121 17.804z" />
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                     </span>
-                    <span class="ml-2 text-sm tracking-wide truncate">Anexos</span>
+                    <span class="ml-2 text-sm tracking-wide truncate" id="sidebarAnexosText">Anexos</span>
                 </a>
+                {{-- Tooltip de sincronización sobre el botón --}}
+                <div id="sidebarAnexosSyncMsg" class="hidden mx-3 mb-1 px-3 py-1.5 bg-yellow-500 text-yellow-900 text-xs font-semibold rounded-md text-center">
+                    <i class="fas fa-sync fa-spin mr-1"></i> Sincronizando anexos, espere...
+                </div>
             </li>
+            @endif
+            @if(Auth::user()->canViewRates())
             <li>
                 <a href="{{ route('settings.index') }}" class="relative flex flex-row items-center h-11 focus:outline-none hover:bg-gray-700 text-white-600 hover:text-white-800 border-l-4 border-transparent hover:border-indigo-500 pr-6">
                     <span class="inline-flex justify-center items-center ml-4">
@@ -58,8 +65,7 @@
                     <span class="ml-2 text-sm tracking-wide truncate">Tarifas</span>
                 </a>
             </li>
-            
-
+            @endif
         </ul>
     </nav>
 

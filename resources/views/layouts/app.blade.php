@@ -72,6 +72,46 @@
                     setInterval(checkSync, 2000);
                 })();
             </script>
+
+            {{-- Polling de sincronización de extensiones (sidebar indicator) --}}
+            <script>
+                (function() {
+                    const syncMsg = document.getElementById('sidebarAnexosSyncMsg');
+                    if (!syncMsg) return;
+
+                    function checkExtensionSync() {
+                        fetch('{{ route("extension.syncStatus") }}')
+                            .then(r => r.json())
+                            .then(data => {
+                                if (data.status === 'syncing') {
+                                    syncMsg.classList.remove('hidden');
+                                } else if (data.status === 'completed') {
+                                    syncMsg.classList.add('hidden');
+                                    syncMsg.classList.remove('bg-red-500', 'text-white');
+                                    syncMsg.classList.add('bg-yellow-500', 'text-yellow-900');
+                                    syncMsg.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Sincronizando anexos, espere...';
+                                    if (window.onExtensionSyncComplete) {
+                                        window.onExtensionSyncComplete(data.message);
+                                    }
+                                } else if (data.status === 'error') {
+                                    syncMsg.innerHTML = '<i class="fas fa-exclamation-triangle mr-1"></i> Error en sincronización';
+                                    syncMsg.classList.remove('hidden', 'bg-yellow-500', 'text-yellow-900');
+                                    syncMsg.classList.add('bg-red-500', 'text-white');
+                                    setTimeout(() => syncMsg.classList.add('hidden'), 8000);
+                                } else {
+                                    syncMsg.classList.add('hidden');
+                                    syncMsg.classList.remove('bg-red-500', 'text-white');
+                                    syncMsg.classList.add('bg-yellow-500', 'text-yellow-900');
+                                    syncMsg.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Sincronizando anexos, espere...';
+                                }
+                            })
+                            .catch(() => {});
+                    }
+
+                    checkExtensionSync();
+                    setInterval(checkExtensionSync, 3000);
+                })();
+            </script>
         @endif
     @endauth
 

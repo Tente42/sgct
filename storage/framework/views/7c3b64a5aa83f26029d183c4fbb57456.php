@@ -241,11 +241,13 @@
                                             </span>
                                         <?php endif; ?>
 
+                                        <?php if(Auth::user()->canEditExtensions()): ?>
                                         <button class="text-gray-400 hover:text-gray-600"
                                                 onclick="editarNombre('<?php echo e($cdr->source); ?>', '<?php echo e($cdr->extension->fullname ?? ''); ?>')"
                                                 title="Editar nombre localmente">
                                             <i class="fas fa-pencil-alt"></i>
                                         </button>
+                                        <?php endif; ?>
                                     </div>
                                     
                                     <?php if($cdr->caller_name && $cdr->caller_name != $cdr->source && $cdr->caller_name != ($cdr->extension->fullname ?? '')): ?>

@@ -27,6 +27,11 @@ class StatsController extends Controller
      */
     public function index(Request $request)
     {
+        // Verificar permiso para ver gráficos/estadísticas
+        if (!auth()->user()->canViewCharts()) {
+            abort(403, 'No tienes permiso para ver estadísticas.');
+        }
+
         // Por defecto mostrar el último mes
         $fechaInicio = $request->input('fecha_inicio', Carbon::now()->subMonth()->format('Y-m-d'));
         $fechaFin = $request->input('fecha_fin', Carbon::now()->format('Y-m-d'));
@@ -440,6 +445,10 @@ class StatsController extends Controller
      */
     public function apiKpis(Request $request)
     {
+        // Verificar permiso para ver gráficos/estadísticas
+        if (!auth()->user()->canViewCharts()) {
+            return response()->json(['error' => 'No tienes permiso para ver estadísticas.'], 403);
+        }
         $fechaInicio = $request->input('fecha_inicio', Carbon::now()->subMonth()->format('Y-m-d'));
         $fechaFin = $request->input('fecha_fin', Carbon::now()->format('Y-m-d'));
         $colaFiltro = $request->input('cola');
@@ -507,11 +516,11 @@ class StatsController extends Controller
      */
     public function sincronizarColas(Request $request)
     {
-        // Verificar que sea admin
-        if (!Auth::user() || !Auth::user()->isAdmin()) {
+        // Verificar permiso para sincronizar colas
+        if (!Auth::user() || !Auth::user()->canSyncQueues()) {
             return response()->json([
                 'success' => false,
-                'message' => 'No tienes permisos para realizar esta acción'
+                'message' => 'No tienes permisos para sincronizar colas.'
             ], 403);
         }
 

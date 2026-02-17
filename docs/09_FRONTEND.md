@@ -360,8 +360,18 @@ Estado del componente:
 
 #### Secciones:
 
-**a) Header + Botón Actualizar IPs:**
-- `POST route('extension.updateIps')` — Solo si `canUpdateIps()`
+**a) Header + Botones de Acción:**
+- Botón "Actualizar IPs": `POST route('extension.updateIps')` — Solo si `canUpdateIps()`
+- Botón "Sincronizar Ahora": Click dispara `iniciarSyncExtensiones()` (AJAX `POST` a `route('extension.sync')`) — Solo si `canSyncCalls()`. El botón se deshabilita y muestra spinner mientras la sincronización está en curso. La respuesta JSON indica éxito o error.
+
+**a.1) Banners de Sincronización (dinámicos):**
+- **Banner amarillo** (`#extensionSyncBanner`): Visible durante la sincronización. Muestra spinner animado y barra de progreso pulsante. Polling cada 3 segundos a `GET /extension/sync-status` para mostrar progreso extensión por extensión.
+- **Banner verde** (`#extensionSyncCompleteBanner`): Aparece al completar. Incluye enlace "Recargar página para ver los cambios".
+- **Banner rojo**: Aparece si la sincronización falla (cambia colores del banner amarillo).
+
+**a.2) Sidebar — Indicador de sincronización:**
+- El enlace "Anexos" en el sidebar muestra un spinner amarillo (`fa-sync fa-spin`) y un tooltip "Sincronizando anexos, espere..." mientras la sincronización está en curso.
+- Polling global desde `app.blade.php` cada 3 segundos a `GET /extension/sync-status`.
 
 **b) Tabla de Extensiones:**
 - Columnas: Anexo, First Name, Last Name, Email, Phone, IP, Permission, DND, Max Contacts, Acciones
@@ -601,7 +611,7 @@ Cada card de PBX connection muestra:
 #### Secciones:
 - **Header**: Título + botón "Nuevo Usuario" (verde)
 - **Tabla**: Usuario (avatar circular con inicial), Email, Rol (badge), Permisos (badges múltiples), Acciones
-- **Badges de permisos**: Sync (azul), Ext (púrpura), Tar (naranja), PBX (rojo), PDF (rosa), XLS (verde), o "Solo lectura"
+- **Badges de permisos**: Sync (azul), SyncExt (azul), SyncQ (azul), Ext (púrpura), IPs (naranja), Tar (naranja), PBX (rojo), PDF (rosa), XLS (verde), Graf (indigo), o "Solo lectura". Permisos de vista deshabilitados se muestran tachados (~~Anexos~~, ~~Tarifas~~)
 - **Acciones**: Editar + Eliminar (con confirm JS). No disponibles para el usuario actual
 - **Paginación**
 
@@ -619,7 +629,7 @@ Cada card de PBX connection muestra:
 ```javascript
 {
     selectedRole: 'user',
-    permissions: { can_sync_calls, can_edit_extensions, can_update_ips, can_edit_rates, can_manage_pbx, can_export_pdf, can_export_excel, can_view_charts },
+    permissions: { can_sync_calls, can_sync_extensions, can_sync_queues, can_edit_extensions, can_update_ips, can_edit_rates, can_manage_pbx, can_export_pdf, can_export_excel, can_view_charts, can_view_extensions, can_view_rates },
     updateRole(),     // Si admin → activa todos los permisos
 }
 ```
@@ -629,9 +639,11 @@ Cada card de PBX connection muestra:
 **Columna Izquierda — Datos:**
 - Nombre, Email, Contraseña, Confirmar Contraseña, Rol (user/supervisor/admin)
 
-**Columna Derecha — Permisos:**
-- **Acciones de API**: Sincronizar, Editar Anexos, Actualizar IPs, Gestionar PBX
+**Columna Derecha — Permisos (5 categorías):**
+- **Sincronización**: Sincronizar Llamadas, Sincronizar Anexos, Sincronizar Colas
+- **Acciones de API**: Editar Anexos, Actualizar IPs, Gestionar PBX
 - **Configuración**: Editar Tarifas
+- **Visualización de Secciones**: Ver Anexos, Ver Tarifas
 - **Reportes**: Exportar PDF, Exportar Excel, Ver Gráficos
 - Nota: Admin tiene todos los permisos automáticamente
 - Cada permiso usa patrón `hidden input (value 0/1) + checkbox (x-model)`

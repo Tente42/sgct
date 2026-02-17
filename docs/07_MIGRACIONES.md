@@ -22,7 +22,7 @@ Ene 29 ──────────── └── + ip (dispositivo)
                     │
 Ene 30 ──► calls + userfield (clasificación UCM)
                     │
-Feb 02 ──► users + role, 8 permisos booleanos
+Feb 02 ─► users + role, 12 permisos booleanos
          ──► pbx_connections + status/sync_message/last_sync_at
 Feb 02 ──► calls + campos detallados (channels, trunks)
 Feb 03 ──► queue_call_details (estadísticas de colas)
@@ -65,6 +65,7 @@ Feb 10 ──► pbx_connection_user (pivot multi-tenant)
 | 16 | `2026_02_02_170000` | `calls` | ALTER | + dstanswer, action_type, lastapp, channel, dst_channel, src_trunk_name — datos CDR extendidos |
 | 17 | `2026_02_03_165548` | `queue_call_details` | CREATE | Detalle de llamadas en cola: pbx_connection_id (FK), queue, caller, agent, call_time (indexed), wait/talk_time, connected |
 | 18 | `2026_02_10_113840` | `pbx_connection_user` | CREATE | Tabla pivot M:N users↔pbx_connections. UNIQUE(user_id, pbx_connection_id). CASCADE DELETE en ambas FK |
+| 19 | `2026_02_17_120000` | `users` | ALTER | + 4 permisos granulares: can_sync_extensions (false), can_sync_queues (false), can_view_extensions (true), can_view_rates (true) — total 12 permisos |
 
 > **Migración #5 (índices)** es crítica para performance: el dashboard ejecuta queries con `WHERE source = ? AND start_time BETWEEN ? AND ?` sobre tablas de 100K+ registros.
 
@@ -213,6 +214,8 @@ CREATE TABLE users (
     password        VARCHAR(255),
     role            VARCHAR(50) DEFAULT 'user',   -- admin | user
     can_sync_calls      BOOLEAN DEFAULT FALSE,
+    can_sync_extensions  BOOLEAN DEFAULT FALSE,
+    can_sync_queues      BOOLEAN DEFAULT FALSE,
     can_edit_extensions  BOOLEAN DEFAULT FALSE,
     can_update_ips       BOOLEAN DEFAULT FALSE,
     can_edit_rates       BOOLEAN DEFAULT FALSE,
@@ -220,6 +223,8 @@ CREATE TABLE users (
     can_export_pdf       BOOLEAN DEFAULT FALSE,
     can_export_excel     BOOLEAN DEFAULT FALSE,
     can_view_charts      BOOLEAN DEFAULT FALSE,
+    can_view_extensions  BOOLEAN DEFAULT TRUE,
+    can_view_rates       BOOLEAN DEFAULT TRUE,
     remember_token  VARCHAR(100) NULL,
     created_at      TIMESTAMP,
     updated_at      TIMESTAMP

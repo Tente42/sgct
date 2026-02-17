@@ -24,6 +24,8 @@ class User extends Authenticatable
         'password',
         'role',
         'can_sync_calls',
+        'can_sync_extensions',
+        'can_sync_queues',
         'can_edit_extensions',
         'can_update_ips',
         'can_edit_rates',
@@ -31,6 +33,8 @@ class User extends Authenticatable
         'can_export_pdf',
         'can_export_excel',
         'can_view_charts',
+        'can_view_extensions',
+        'can_view_rates',
     ];
 
     /**
@@ -69,6 +73,16 @@ class User extends Authenticatable
         return $this->hasPermission('can_sync_calls');
     }
 
+    public function canSyncExtensions(): bool
+    {
+        return $this->hasPermission('can_sync_extensions');
+    }
+
+    public function canSyncQueues(): bool
+    {
+        return $this->hasPermission('can_sync_queues');
+    }
+
     public function canEditExtensions(): bool
     {
         return $this->hasPermission('can_edit_extensions');
@@ -102,6 +116,16 @@ class User extends Authenticatable
     public function canViewCharts(): bool
     {
         return $this->hasPermission('can_view_charts');
+    }
+
+    public function canViewExtensions(): bool
+    {
+        return $this->hasPermission('can_view_extensions');
+    }
+
+    public function canViewRates(): bool
+    {
+        return $this->hasPermission('can_view_rates');
     }
 
     /**
@@ -158,6 +182,18 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'can_sync_calls' => 'boolean',
+            'can_sync_extensions' => 'boolean',
+            'can_sync_queues' => 'boolean',
+            'can_edit_extensions' => 'boolean',
+            'can_update_ips' => 'boolean',
+            'can_edit_rates' => 'boolean',
+            'can_manage_pbx' => 'boolean',
+            'can_export_pdf' => 'boolean',
+            'can_export_excel' => 'boolean',
+            'can_view_charts' => 'boolean',
+            'can_view_extensions' => 'boolean',
+            'can_view_rates' => 'boolean',
         ];
     }
 }
