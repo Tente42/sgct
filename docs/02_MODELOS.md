@@ -345,6 +345,8 @@ La API Grandstream envía **~22% de registros duplicados** en sus respuestas. El
 | `password` | string | Contraseña (hasheada con bcrypt) | — |
 | `role` | string | Rol: `admin`, `supervisor`, `user` | `user` |
 | `can_sync_calls` | boolean | Permiso: sincronizar CDRs desde la central | `false` |
+| `can_sync_extensions` | boolean | Permiso: sincronizar anexos desde la central | `false` |
+| `can_sync_queues` | boolean | Permiso: sincronizar datos de colas (QUEUE) | `false` |
 | `can_edit_extensions` | boolean | Permiso: editar extensiones y desvíos en la PBX | `false` |
 | `can_update_ips` | boolean | Permiso: actualizar IPs de extensiones | `false` |
 | `can_edit_rates` | boolean | Permiso: modificar tarifas de facturación | `false` |
@@ -352,6 +354,8 @@ La API Grandstream envía **~22% de registros duplicados** en sus respuestas. El
 | `can_export_pdf` | boolean | Permiso: generar y descargar reportes PDF | `false` |
 | `can_export_excel` | boolean | Permiso: generar y descargar reportes Excel | `false` |
 | `can_view_charts` | boolean | Permiso: acceder a gráficos y dashboard de colas/KPIs | `false` |
+| `can_view_extensions` | boolean | Permiso: ver la página de anexos | `true` |
+| `can_view_rates` | boolean | Permiso: ver la página de tarifas | `true` |
 
 ### Modelo de Autorización
 
@@ -379,6 +383,8 @@ La API Grandstream envía **~22% de registros duplicados** en sus respuestas. El
 |---|---|---|
 | `hasPermission(string $perm)` | bool | **Admin → siempre `true`**. Otros roles → evalúa `$this->{$perm}` dinámicamente |
 | `canSyncCalls()` | bool | `hasPermission('can_sync_calls')` |
+| `canSyncExtensions()` | bool | `hasPermission('can_sync_extensions')` |
+| `canSyncQueues()` | bool | `hasPermission('can_sync_queues')` |
 | `canEditExtensions()` | bool | `hasPermission('can_edit_extensions')` |
 | `canUpdateIps()` | bool | `hasPermission('can_update_ips')` |
 | `canEditRates()` | bool | `hasPermission('can_edit_rates')` |
@@ -386,6 +392,8 @@ La API Grandstream envía **~22% de registros duplicados** en sus respuestas. El
 | `canExportPdf()` | bool | `hasPermission('can_export_pdf')` |
 | `canExportExcel()` | bool | `hasPermission('can_export_excel')` |
 | `canViewCharts()` | bool | `hasPermission('can_view_charts')` |
+| `canViewExtensions()` | bool | `hasPermission('can_view_extensions')` |
+| `canViewRates()` | bool | `hasPermission('can_view_rates')` |
 
 ### Relaciones
 

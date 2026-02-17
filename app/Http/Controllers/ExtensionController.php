@@ -3,13 +3,239 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use App\Models\Extension;
+use App\Models\PbxConnection;
 use App\Traits\GrandstreamTrait;
+use Illuminate\Support\Facades\Cache;
 
 class ExtensionController extends Controller
 {
     use GrandstreamTrait;
     
+    /**
+     * Sincronizar todas las extensiones desde la Central Telefónica (AJAX).
+     * Se ejecuta directamente en la petición HTTP con timeout extendido.
+     * El progreso se trackea en Cache para que el frontend lo muestre via polling.
+     */
+    public function syncExtensions(): JsonResponse
+    {
+        // Extender timeout para la sincronización
+        set_time_limit(600);
+        ini_set('max_execution_time', '600');
+
+        // Verificar permiso
+        if (!auth()->user()->canSyncExtensions()) {
+            return response()->json(['success' => false, 'message' => 'No tienes permiso para sincronizar anexos.'], 403);
+        }
+
+        $pbxId = session('active_pbx_id');
+        if (!$pbxId) {
+            return response()->json(['success' => false, 'message' => 'No hay una central PBX seleccionada.'], 400);
+        }
+
+        $cacheKey = "extension_sync_{$pbxId}";
+
+        // Verificar si ya hay una sincronización en curso
+        $current = Cache::get($cacheKey);
+        if ($current && ($current['status'] ?? '') === 'syncing') {
+            // Auto-expirar sincronizaciones estancadas (más de 10 minutos)
+            $startedAt = $current['started_at'] ?? null;
+            $isStale = $startedAt && \Carbon\Carbon::parse($startedAt)->diffInMinutes(now()) > 10;
+
+            if (!$isStale) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Ya hay una sincronización de anexos en progreso. Por favor espere a que termine.'
+                ], 409);
+            }
+            // Sincronización estancada, permitir nueva
+            Cache::forget($cacheKey);
+        }
+
+        try {
+            // Marcar como sincronizando
+            Cache::put($cacheKey, [
+                'status' => 'syncing',
+                'message' => 'Conectando con la central...',
+                'started_at' => now()->toDateTimeString(),
+            ], 1800);
+
+            // Verificar conexión con la central
+            if (!$this->testConnection()) {
+                Cache::put($cacheKey, [
+                    'status' => 'error',
+                    'message' => 'No se pudo conectar con la Central Telefónica. Verifique la red.',
+                ], 300);
+                return response()->json(['success' => false, 'message' => 'Error de conexión con la central.'], 500);
+            }
+
+            Cache::put($cacheKey, [
+                'status' => 'syncing',
+                'message' => 'Obteniendo lista de extensiones...',
+            ], 1800);
+
+            // Obtener lista de usuarios desde la central
+            $listResponse = $this->connectApi('listUser', [], 60);
+            $responseBlock = $listResponse['response'] ?? [];
+
+            // Extraer usuarios (manejar diferentes formatos de respuesta)
+            $users = $responseBlock['user'] ?? [];
+            if (empty($users)) {
+                foreach ($responseBlock as $value) {
+                    if (is_array($value) && !empty($value) && isset($value[0]['user_name'])) {
+                        $users = $value;
+                        break;
+                    }
+                }
+            }
+
+            if (empty($users)) {
+                Cache::put($cacheKey, [
+                    'status' => 'completed',
+                    'message' => 'Conexión exitosa. No se encontraron extensiones en la central.',
+                ], 120);
+                return response()->json(['success' => true, 'message' => 'Sin extensiones encontradas.', 'count' => 0]);
+            }
+
+            $total = count($users);
+            $synced = 0;
+            $updated = 0;
+            $created = 0;
+
+            foreach ($users as $userData) {
+                $extensionNumber = $userData['user_name'] ?? null;
+                if (!$extensionNumber) continue;
+
+                // Actualizar progreso en Cache
+                Cache::put($cacheKey, [
+                    'status' => 'syncing',
+                    'message' => "Sincronizando extensión {$extensionNumber} ({$synced}/{$total})...",
+                ], 1800);
+
+                // Construir datos de extensión
+                $data = [
+                    'fullname' => $userData['fullname'] ?? $extensionNumber,
+                    'email' => $userData['email'] ?? null,
+                    'first_name' => $userData['first_name'] ?? null,
+                    'last_name' => $userData['last_name'] ?? null,
+                    'phone' => $userData['phone_number'] ?? null,
+                    'do_not_disturb' => false,
+                    'permission' => 'Internal',
+                    'max_contacts' => 1,
+                ];
+
+                // Obtener detalles SIP adicionales (modo completo)
+                try {
+                    $sipData = $this->connectApi('getSIPAccount', ['extension' => $extensionNumber], 10);
+                    if (($sipData['status'] ?? -1) == 0) {
+                        $details = $sipData['response']['extension']
+                            ?? $sipData['response']['sip_account'][0]
+                            ?? $sipData['response']['sip_account']
+                            ?? [];
+
+                        $data['do_not_disturb'] = ($details['dnd'] ?? 'no') === 'yes';
+                        $data['max_contacts'] = (int)($details['max_contacts'] ?? 1);
+                        $data['secret'] = $details['secret'] ?? null;
+                        $data['permission'] = $this->parsePermissionFromApi($details['permission'] ?? 'internal');
+                    }
+                } catch (\Exception $e) {
+                    // Ignorar errores de SIP, continuar con datos básicos
+                }
+
+                // Guardar o actualizar extensión
+                $existing = Extension::withoutGlobalScope('current_pbx')
+                    ->where('extension', $extensionNumber)
+                    ->where('pbx_connection_id', $pbxId)
+                    ->first();
+
+                if ($existing) {
+                    $existing->update($data);
+                    $existing->touch(); // Forzar updated_at aunque los datos no cambien
+                    $updated++;
+                } else {
+                    Extension::withoutGlobalScope('current_pbx')->create(
+                        array_merge(['extension' => $extensionNumber, 'pbx_connection_id' => $pbxId], $data)
+                    );
+                    $created++;
+                }
+
+                $synced++;
+            }
+
+            $message = "Sincronización completada: {$synced} anexos procesados ({$created} nuevos, {$updated} actualizados).";
+
+            Cache::put($cacheKey, [
+                'status' => 'completed',
+                'message' => $message,
+            ], 120);
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'count' => $synced,
+                'created' => $created,
+                'updated' => $updated,
+            ]);
+
+        } catch (\Exception $e) {
+            Cache::put($cacheKey, [
+                'status' => 'error',
+                'message' => 'Error durante la sincronización: ' . $e->getMessage(),
+            ], 300);
+
+            return response()->json(['success' => false, 'message' => 'Error: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Verificar estado de sincronización de extensiones (AJAX polling)
+     */
+    public function checkSyncStatus(): JsonResponse
+    {
+        $pbxId = session('active_pbx_id');
+        if (!$pbxId) {
+            return response()->json(['status' => 'idle']);
+        }
+
+        $cacheKey = "extension_sync_{$pbxId}";
+        $syncData = Cache::get($cacheKey);
+
+        if (!$syncData) {
+            return response()->json(['status' => 'idle']);
+        }
+
+        // Auto-expirar sincronizaciones estancadas (más de 10 minutos sin respuesta)
+        if (($syncData['status'] ?? '') === 'syncing') {
+            $startedAt = $syncData['started_at'] ?? null;
+            if ($startedAt && \Carbon\Carbon::parse($startedAt)->diffInMinutes(now()) > 10) {
+                Cache::forget($cacheKey);
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'La sincronización anterior no respondió. Puede intentar de nuevo.',
+                ]);
+            }
+        }
+
+        // Si completó o error, limpiar cache después de informar
+        if (in_array($syncData['status'] ?? '', ['completed', 'error'])) {
+            Cache::forget($cacheKey);
+        }
+
+        return response()->json($syncData);
+    }
+
+    /**
+     * Parsear permiso de la API al formato local de BD
+     */
+    private function parsePermissionFromApi(string $raw): string
+    {
+        if (str_contains($raw, 'international')) return 'International';
+        if (str_contains($raw, 'national')) return 'National';
+        if (str_contains($raw, 'local')) return 'Local';
+        return 'Internal';
+    }
+
     public function update(Request $request)
     {
         // Verificar permiso
@@ -209,6 +435,11 @@ class ExtensionController extends Controller
 
     public function index(Request $request)
     {
+        // Verificar permiso para ver anexos
+        if (!auth()->user()->canViewExtensions()) {
+            abort(403, 'No tienes permiso para ver los anexos.');
+        }
+
         $anexo = $request->input('anexo');
         $extensions = \App\Models\Extension::query()
             ->when($anexo, fn ($q) => $q->where('extension', 'like', "%{$anexo}%"))
@@ -224,6 +455,11 @@ class ExtensionController extends Controller
      */
     public function getCallForwarding(Request $request)
     {
+        // Verificar permiso
+        if (!auth()->user()->canEditExtensions()) {
+            return response()->json(['success' => false, 'message' => 'No tienes permiso para ver desvíos.'], 403);
+        }
+
         $request->validate([
             'extension' => 'required|string'
         ]);

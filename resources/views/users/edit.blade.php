@@ -118,10 +118,10 @@
                         <!-- Lista de Permisos -->
                         <div class="space-y-3" :class="{ 'opacity-50 pointer-events-none': selectedRole === 'admin' }">
                             
-                            <!-- Acciones de API -->
+                            <!-- Sincronización -->
                             <div class="bg-gray-50 p-3 rounded-lg">
                                 <h5 class="text-sm font-semibold text-gray-600 mb-2">
-                                    <i class="fas fa-server text-orange-500 mr-1"></i> Acciones de API (Central)
+                                    <i class="fas fa-sync-alt text-blue-500 mr-1"></i> Sincronización
                                 </h5>
                                 
                                 <label class="flex items-center gap-3 py-2 cursor-pointer hover:bg-gray-100 px-2 rounded">
@@ -133,6 +133,33 @@
                                         <p class="text-xs text-gray-500">Puede ejecutar sincronización de CDRs desde la central</p>
                                     </div>
                                 </label>
+
+                                <label class="flex items-center gap-3 py-2 cursor-pointer hover:bg-gray-100 px-2 rounded">
+                                    <input type="hidden" name="can_sync_extensions" :value="permissions.can_sync_extensions ? '1' : '0'">
+                                    <input type="checkbox" x-model="permissions.can_sync_extensions"
+                                           class="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <div>
+                                        <span class="text-sm font-medium text-gray-700">Sincronizar Anexos</span>
+                                        <p class="text-xs text-gray-500">Puede ejecutar sincronización de anexos desde la central</p>
+                                    </div>
+                                </label>
+
+                                <label class="flex items-center gap-3 py-2 cursor-pointer hover:bg-gray-100 px-2 rounded">
+                                    <input type="hidden" name="can_sync_queues" :value="permissions.can_sync_queues ? '1' : '0'">
+                                    <input type="checkbox" x-model="permissions.can_sync_queues"
+                                           class="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <div>
+                                        <span class="text-sm font-medium text-gray-700">Sincronizar Colas</span>
+                                        <p class="text-xs text-gray-500">Puede sincronizar datos de colas (QUEUE) desde la central</p>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- Acciones de API -->
+                            <div class="bg-gray-50 p-3 rounded-lg">
+                                <h5 class="text-sm font-semibold text-gray-600 mb-2">
+                                    <i class="fas fa-server text-orange-500 mr-1"></i> Acciones de API (Central)
+                                </h5>
 
                                 <label class="flex items-center gap-3 py-2 cursor-pointer hover:bg-gray-100 px-2 rounded">
                                     <input type="hidden" name="can_edit_extensions" :value="permissions.can_edit_extensions ? '1' : '0'">
@@ -182,7 +209,44 @@
                                 </label>
                             </div>
 
-                            <!-- Reportes -->
+                            <!-- Visualización de Secciones -->
+                            <div class="bg-gray-50 p-3 rounded-lg">
+                                <h5 class="text-sm font-semibold text-gray-600 mb-2">
+                                    <i class="fas fa-eye text-indigo-500 mr-1"></i> Visualización de Secciones
+                                </h5>
+
+                                <label class="flex items-center gap-3 py-2 cursor-pointer hover:bg-gray-100 px-2 rounded">
+                                    <input type="hidden" name="can_view_charts" :value="permissions.can_view_charts ? '1' : '0'">
+                                    <input type="checkbox" x-model="permissions.can_view_charts"
+                                           class="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <div>
+                                        <span class="text-sm font-medium text-gray-700">Ver Gráficos y Colas</span>
+                                        <p class="text-xs text-gray-500">Puede ver la sección de gráficos, estadísticas y KPIs de colas</p>
+                                    </div>
+                                </label>
+
+                                <label class="flex items-center gap-3 py-2 cursor-pointer hover:bg-gray-100 px-2 rounded">
+                                    <input type="hidden" name="can_view_extensions" :value="permissions.can_view_extensions ? '1' : '0'">
+                                    <input type="checkbox" x-model="permissions.can_view_extensions"
+                                           class="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <div>
+                                        <span class="text-sm font-medium text-gray-700">Ver Anexos</span>
+                                        <p class="text-xs text-gray-500">Puede acceder a la página de configuración de anexos</p>
+                                    </div>
+                                </label>
+
+                                <label class="flex items-center gap-3 py-2 cursor-pointer hover:bg-gray-100 px-2 rounded">
+                                    <input type="hidden" name="can_view_rates" :value="permissions.can_view_rates ? '1' : '0'">
+                                    <input type="checkbox" x-model="permissions.can_view_rates"
+                                           class="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    <div>
+                                        <span class="text-sm font-medium text-gray-700">Ver Tarifas</span>
+                                        <p class="text-xs text-gray-500">Puede acceder a la página de tarifas (solo lectura)</p>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- Reportes y Exportación -->
                             <div class="bg-gray-50 p-3 rounded-lg">
                                 <h5 class="text-sm font-semibold text-gray-600 mb-2">
                                     <i class="fas fa-file-alt text-green-500 mr-1"></i> Reportes y Exportación
@@ -205,16 +269,6 @@
                                     <div>
                                         <span class="text-sm font-medium text-gray-700">Exportar Excel</span>
                                         <p class="text-xs text-gray-500">Puede descargar reportes en formato Excel</p>
-                                    </div>
-                                </label>
-
-                                <label class="flex items-center gap-3 py-2 cursor-pointer hover:bg-gray-100 px-2 rounded">
-                                    <input type="hidden" name="can_view_charts" :value="permissions.can_view_charts ? '1' : '0'">
-                                    <input type="checkbox" x-model="permissions.can_view_charts"
-                                           class="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                    <div>
-                                        <span class="text-sm font-medium text-gray-700">Ver Gráficos</span>
-                                        <p class="text-xs text-gray-500">Puede acceder a la sección de gráficos y estadísticas</p>
                                     </div>
                                 </label>
                             </div>
@@ -271,6 +325,8 @@
                 selectedRole: '{{ old('role', $user->role) }}',
                 permissions: {
                     can_sync_calls: {{ old('can_sync_calls', $user->can_sync_calls) ? 'true' : 'false' }},
+                    can_sync_extensions: {{ old('can_sync_extensions', $user->can_sync_extensions) ? 'true' : 'false' }},
+                    can_sync_queues: {{ old('can_sync_queues', $user->can_sync_queues) ? 'true' : 'false' }},
                     can_edit_extensions: {{ old('can_edit_extensions', $user->can_edit_extensions) ? 'true' : 'false' }},
                     can_update_ips: {{ old('can_update_ips', $user->can_update_ips) ? 'true' : 'false' }},
                     can_edit_rates: {{ old('can_edit_rates', $user->can_edit_rates) ? 'true' : 'false' }},
@@ -278,6 +334,8 @@
                     can_export_pdf: {{ old('can_export_pdf', $user->can_export_pdf) ? 'true' : 'false' }},
                     can_export_excel: {{ old('can_export_excel', $user->can_export_excel) ? 'true' : 'false' }},
                     can_view_charts: {{ old('can_view_charts', $user->can_view_charts) ? 'true' : 'false' }},
+                    can_view_extensions: {{ old('can_view_extensions', $user->can_view_extensions) ? 'true' : 'false' }},
+                    can_view_rates: {{ old('can_view_rates', $user->can_view_rates) ? 'true' : 'false' }},
                 },
                 updateRole() {
                     if (this.selectedRole === 'admin') {

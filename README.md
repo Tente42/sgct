@@ -16,7 +16,7 @@ Panel de administración y monitoreo de llamadas para centrales telefónicas **G
 -  **Sistema Multi-Central** — Gestiona múltiples centrales PBX desde una sola interfaz
 -  **Control de acceso por central** — Cada usuario solo ve las centrales que el admin le asigne
 -  **Sincronización automática** de CDRs desde la central Grandstream
--  **Gestión de extensiones** con actualización de IPs bajo demanda
+-  **Gestión de extensiones** con sincronización bajo demanda y actualización de IPs
 -  **Desvíos de llamadas** — Configura Call Forwarding directamente desde la interfaz
 -  **Gráficos y reportes** de llamadas entrantes, salientes y perdidas
 -  **Estadísticas de colas (KPI)** — Volumen, abandono, ASA, rendimiento de agentes
@@ -260,11 +260,16 @@ Este comando:
 
 También puedes sincronizar directamente desde la interfaz web:
 
+**Configuración Inicial (Setup):**
 1. Ir a **Gestión de Centrales PBX**
 2. Seleccionar una central sin datos
 3. Se mostrará la página de **Configuración Inicial**
 4. Marcar qué sincronizar (extensiones, llamadas, año)
 5. Click en **Iniciar Sincronización**
+
+**Sincronización rápida desde cada sección:**
+- **Llamadas:** Botón "Sincronizar Ahora" en el Dashboard de llamadas (requiere permiso `can_sync_calls`)
+- **Anexos:** Botón "Sincronizar Ahora" en la página de Configuración de Anexos (requiere permiso `can_sync_calls`). Se ejecuta via AJAX — la página muestra el progreso en tiempo real mientras sincroniza extensión por extensión. El sidebar muestra un indicador de progreso en el enlace "Anexos".
 
 > El sistema incluye protección contra sincronizaciones simultáneas. Si otro usuario ya está sincronizando, verás un mensaje de espera.
 

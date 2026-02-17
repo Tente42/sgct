@@ -94,7 +94,13 @@
                                         <span class="px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded">Todos</span>
                                     @else
                                         @if($user->can_sync_calls)
-                                            <span class="px-1 py-0.5 text-xs bg-blue-100 text-blue-700 rounded" title="Sincronizar">Sync</span>
+                                            <span class="px-1 py-0.5 text-xs bg-blue-100 text-blue-700 rounded" title="Sincronizar Llamadas">Sync</span>
+                                        @endif
+                                        @if($user->can_sync_extensions)
+                                            <span class="px-1 py-0.5 text-xs bg-blue-100 text-blue-700 rounded" title="Sincronizar Anexos">SyncExt</span>
+                                        @endif
+                                        @if($user->can_sync_queues)
+                                            <span class="px-1 py-0.5 text-xs bg-blue-100 text-blue-700 rounded" title="Sincronizar Colas">SyncQ</span>
                                         @endif
                                         @if($user->can_edit_extensions)
                                             <span class="px-1 py-0.5 text-xs bg-purple-100 text-purple-700 rounded" title="Editar Anexos">Ext</span>
@@ -111,7 +117,16 @@
                                         @if($user->can_export_excel)
                                             <span class="px-1 py-0.5 text-xs bg-green-100 text-green-700 rounded" title="Exportar Excel">XLS</span>
                                         @endif
-                                        @if(!$user->can_sync_calls && !$user->can_edit_extensions && !$user->can_edit_rates && !$user->can_manage_pbx && !$user->can_export_pdf && !$user->can_export_excel)
+                                        @if($user->can_view_charts)
+                                            <span class="px-1 py-0.5 text-xs bg-indigo-100 text-indigo-700 rounded" title="Ver Gráficos">Graf</span>
+                                        @endif
+                                        @if(!$user->can_view_extensions)
+                                            <span class="px-1 py-0.5 text-xs bg-gray-200 text-gray-600 rounded" title="Sin acceso a Anexos"><s>Ext</s></span>
+                                        @endif
+                                        @if(!$user->can_view_rates)
+                                            <span class="px-1 py-0.5 text-xs bg-gray-200 text-gray-600 rounded" title="Sin acceso a Tarifas"><s>Tar</s></span>
+                                        @endif
+                                        @if(!$user->can_sync_calls && !$user->can_sync_extensions && !$user->can_sync_queues && !$user->can_edit_extensions && !$user->can_edit_rates && !$user->can_manage_pbx && !$user->can_export_pdf && !$user->can_export_excel && !$user->can_view_charts)
                                             <span class="px-2 py-0.5 text-xs bg-gray-100 text-gray-500 rounded">Solo lectura</span>
                                         @endif
                                     @endif

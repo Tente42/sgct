@@ -15,9 +15,11 @@ class UserController extends Controller
      * Lista de permisos granulares del sistema.
      */
     private const PERMISSION_FIELDS = [
-        'can_sync_calls', 'can_edit_extensions', 'can_update_ips',
+        'can_sync_calls', 'can_sync_extensions', 'can_sync_queues',
+        'can_edit_extensions', 'can_update_ips',
         'can_edit_rates', 'can_manage_pbx', 'can_export_pdf',
-        'can_export_excel', 'can_view_charts',
+        'can_export_excel', 'can_view_charts', 'can_view_extensions',
+        'can_view_rates',
     ];
 
     /**
@@ -51,6 +53,8 @@ class UserController extends Controller
             'password' => ['required', 'confirmed', Password::min(6)],
             'role' => ['required', 'string', 'in:admin,supervisor,user'],
             'can_sync_calls' => ['nullable', 'boolean'],
+            'can_sync_extensions' => ['nullable', 'boolean'],
+            'can_sync_queues' => ['nullable', 'boolean'],
             'can_edit_extensions' => ['nullable', 'boolean'],
             'can_update_ips' => ['nullable', 'boolean'],
             'can_edit_rates' => ['nullable', 'boolean'],
@@ -58,6 +62,8 @@ class UserController extends Controller
             'can_export_pdf' => ['nullable', 'boolean'],
             'can_export_excel' => ['nullable', 'boolean'],
             'can_view_charts' => ['nullable', 'boolean'],
+            'can_view_extensions' => ['nullable', 'boolean'],
+            'can_view_rates' => ['nullable', 'boolean'],
         ]);
 
         // Hash password
@@ -103,6 +109,8 @@ class UserController extends Controller
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $user->id],
             'role' => ['required', 'string', 'in:admin,supervisor,user'],
             'can_sync_calls' => ['nullable', 'boolean'],
+            'can_sync_extensions' => ['nullable', 'boolean'],
+            'can_sync_queues' => ['nullable', 'boolean'],
             'can_edit_extensions' => ['nullable', 'boolean'],
             'can_update_ips' => ['nullable', 'boolean'],
             'can_edit_rates' => ['nullable', 'boolean'],
@@ -110,6 +118,8 @@ class UserController extends Controller
             'can_export_pdf' => ['nullable', 'boolean'],
             'can_export_excel' => ['nullable', 'boolean'],
             'can_view_charts' => ['nullable', 'boolean'],
+            'can_view_extensions' => ['nullable', 'boolean'],
+            'can_view_rates' => ['nullable', 'boolean'],
         ];
 
         // Only validate password if provided
@@ -185,6 +195,8 @@ class UserController extends Controller
                 'role_display' => $user->getRoleDisplayName(),
                 'is_admin' => $user->isAdmin(),
                 'can_sync_calls' => (bool) $user->can_sync_calls,
+                'can_sync_extensions' => (bool) $user->can_sync_extensions,
+                'can_sync_queues' => (bool) $user->can_sync_queues,
                 'can_edit_extensions' => (bool) $user->can_edit_extensions,
                 'can_update_ips' => (bool) $user->can_update_ips,
                 'can_edit_rates' => (bool) $user->can_edit_rates,
@@ -192,6 +204,8 @@ class UserController extends Controller
                 'can_export_pdf' => (bool) $user->can_export_pdf,
                 'can_export_excel' => (bool) $user->can_export_excel,
                 'can_view_charts' => (bool) $user->can_view_charts,
+                'can_view_extensions' => (bool) $user->can_view_extensions,
+                'can_view_rates' => (bool) $user->can_view_rates,
                 'created_at' => $user->created_at->format('d/m/Y'),
                 'is_current' => $user->id === auth()->id(),
                 'allowed_pbx_ids' => $user->pbxConnections->pluck('id')->toArray(),

@@ -56,6 +56,8 @@
 | `isUser()` | public | bool | `role === 'user'` |
 | `hasPermission($perm)` | public | bool | Admin → siempre true. User → evalúa `$this->$perm` |
 | `canSyncCalls()` | public | bool | `hasPermission('can_sync_calls')` |
+| `canSyncExtensions()` | public | bool | `hasPermission('can_sync_extensions')` |
+| `canSyncQueues()` | public | bool | `hasPermission('can_sync_queues')` |
 | `canEditExtensions()` | public | bool | `hasPermission('can_edit_extensions')` |
 | `canUpdateIps()` | public | bool | `hasPermission('can_update_ips')` |
 | `canEditRates()` | public | bool | `hasPermission('can_edit_rates')` |
@@ -63,9 +65,11 @@
 | `canExportPdf()` | public | bool | `hasPermission('can_export_pdf')` |
 | `canExportExcel()` | public | bool | `hasPermission('can_export_excel')` |
 | `canViewCharts()` | public | bool | `hasPermission('can_view_charts')` |
+| `canViewExtensions()` | public | bool | `hasPermission('can_view_extensions')` |
+| `canViewRates()` | public | bool | `hasPermission('can_view_rates')` |
 | `getRoleDisplayName()` | public | string | admin→Administrador, user→Usuario |
 | `pbxConnections()` | public | BelongsToMany | Centrales asignadas → pivot `pbx_connection_user` |
-| `casts()` | protected | array | password→hashed, 8 permisos→boolean |
+| `casts()` | protected | array | password→hashed, 12 permisos→boolean |
 
 ---
 
@@ -89,12 +93,15 @@
 ### app/Http/Controllers/ExtensionController.php — Gestión de Extensiones
 | Función | Vis. | Retorno | Descripción |
 |---|---|---|---|
+| `syncExtensions()` | public | JsonResponse | Sincroniza extensiones desde PBX via AJAX con timeout extendido. Requiere `canSyncCalls` |
+| `checkSyncStatus()` | public | JsonResponse | Endpoint AJAX para polling del estado de sincronización de extensiones |
 | `index()` | public | View | Listado de extensiones con paginación |
 | `update($request)` | public | Redirect | Actualización bidireccional BD↔PBX en 6 fases. Requiere `canEditExtensions` |
 | `updateName($request)` | public | Redirect | Actualiza solo fullname en BD (sin API) |
 | `updateIps($request)` | public | Redirect | Actualiza IPs de extensiones. Requiere `canUpdateIps` |
 | `getCallForwarding($request)` | public | JsonResponse | GET config de desvío desde PBX via `getSIPAccount` |
 | `updateCallForwarding($request)` | public | JsonResponse | POST desvío → `updateSIPAccount` + `applyChanges` (500ms pause) |
+| `parsePermissionFromApi($raw)` | private | string | Convierte permiso API → formato BD (Internal/Local/National/International) |
 
 ### app/Http/Controllers/PbxConnectionController.php — CRUD Centrales
 | Función | Vis. | Retorno | Descripción |

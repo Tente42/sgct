@@ -22,7 +22,7 @@
             
             <div class="flex flex-wrap items-center gap-3">
                 <!-- Botón de sincronización (solo admins) -->
-                @if(auth()->user() && auth()->user()->isAdmin())
+                @if(auth()->user() && auth()->user()->canSyncQueues())
                 <button type="button" id="btnSyncColas" 
                         class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded shadow-sm text-sm inline-flex items-center gap-2 transition-colors duration-200">
                     <i class="fas fa-sync-alt" id="syncIcon"></i>
@@ -482,7 +482,7 @@
                             Este comando sincroniza los datos de <strong>queueapi</strong> a la base de datos local.
                             Puedes programarlo en el cron para ejecutarse automáticamente.
                         </p>
-                        @if(auth()->user() && auth()->user()->isAdmin())
+                        @if(auth()->user() && auth()->user()->canSyncQueues())
                         <button type="button" onclick="sincronizarColas()" 
                                 class="mt-3 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors duration-200">
                             <i class="fas fa-sync-alt me-1"></i>Sincronizar ahora

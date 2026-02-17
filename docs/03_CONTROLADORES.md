@@ -138,10 +138,53 @@ Procesa la respuesta cruda de `cdrapi`: extrae segmentos recursivamente (los CDR
 
 ### Métodos Públicos
 
+#### `syncExtensions()` — Sincronización de Extensiones (AJAX)
+**Ruta:** `POST /extension/sync`  
+**Permiso:** `canSyncExtensions()`  
+**Respuesta:** JSON
+
+Sincroniza todas las extensiones desde la Central Telefónica PBX via petición AJAX. El proceso se ejecuta directamente en la petición HTTP con timeout extendido (`set_time_limit(600)`).
+
+**Proceso:**
+1. Verifica permiso `canSyncExtensions()` y que haya una central PBX seleccionada en sesión
+2. Verifica si ya hay una sincronización en curso (via Cache `extension_sync_{pbxId}`)
+3. Verifica conexión con `testConnection()`
+4. Llama a `listUser` para obtener lista completa de usuarios
+5. Para cada usuario, llama a `getSIPAccount` para obtener detalles SIP
+6. Actualiza progreso en Cache en cada extensión procesada (para polling del frontend)
+7. Usa `updateOrCreate` para guardar/actualizar cada extensión en BD local
+8. Retorna JSON con resumen: total procesados, nuevos y actualizados
+
+> El patrón es el mismo usado por `PbxConnectionController::syncExtensions()` — AJAX directo con timeout extendido, sin procesos en background ni colas.
+
+**Indicadores visuales durante la sincronización:**
+- **Sidebar:** El enlace "Anexos" muestra un ícono de spinner y un mensaje amarillo "Sincronizando anexos, espere..."
+- **Página de Anexos:** Banner amarillo con progreso animado, botón "Sincronizar Ahora" deshabilitado
+- **Al completar:** Banner verde con enlace para recargar la página y ver los cambios
+
+**Multi-usuario:** Si otro usuario ya inició una sincronización, se retorna un error 409 (Conflict). Los indicadores del sidebar se muestran a todos los usuarios gracias al polling global.
+
+---
+
+#### `checkSyncStatus()` — Estado de Sincronización (AJAX)
+**Ruta:** `GET /extension/sync-status`  
+**Respuesta:** JSON
+
+Endpoint de polling usado por el sidebar y la página de configuración para consultar el estado de la sincronización de extensiones.
+
+| Campo | Tipo | Valores posibles |
+|---|---|---|
+| `status` | string | `idle`, `syncing`, `completed`, `error` |
+| `message` | string | Mensaje descriptivo del estado actual |
+
+**Helper:** `parsePermissionFromApi()` — Convierte formato API (`internal-local-national-international`) al formato BD (`International`).
+
+---
+
 #### `index(Request $request)` — Listado de Extensiones
 **Ruta:** `GET /configuracion`  
 **Vista:** `configuracion`  
-**Acceso:** Cualquier usuario autenticado
+**Permiso:** `canViewExtensions()`
 
 Lista todas las extensiones paginadas (50/página) con filtro por número de extensión. La vista incluye un componente Alpine.js complejo (`extensionEditor()`) con modal multi-paso.
 
@@ -195,6 +238,7 @@ Llama a `listAccount` con opciones `extension,addr`. Itera todas las cuentas y a
 
 #### `getCallForwarding(Request $request)` — Consulta de Desvíos
 **Ruta:** `GET /extension/forwarding`  
+**Permiso:** `canEditExtensions()`  
 **Respuesta:** JSON
 
 Consulta la configuración actual de call forwarding de una extensión:
@@ -391,6 +435,7 @@ Limpia `active_pbx_id` y `active_pbx_name` de la sesión. Redirige al selector d
 
 #### `index(Request $request)` — Dashboard KPI Completo
 **Ruta:** `GET /stats/kpi-turnos`  
+**Permiso:** `canViewCharts()`  
 **Vista:** `stats.kpi-turnos`
 
 **Datos enviados a la vista (7 datasets):**
@@ -433,7 +478,8 @@ Limpia `active_pbx_id` y `active_pbx_name` de la sesión. Redirige al selector d
 ---
 
 #### `apiKpis(Request $request)` — API JSON para Gráficos
-**Ruta:** `GET /stats/kpi-turnos/api`
+**Ruta:** `GET /stats/kpi-turnos/api`  
+**Permiso:** `canViewCharts()`
 
 Mismo cálculo que `index()` pero retorna JSON puro. Útil para actualizaciones AJAX o futuros dashboards SPA.
 
@@ -441,7 +487,7 @@ Mismo cálculo que `index()` pero retorna JSON puro. Útil para actualizaciones 
 
 #### `sincronizarColas(Request $request)` — Ejecutar Sincronización
 **Ruta:** `POST /stats/kpi-turnos/sync`  
-**Permiso:** Solo admin
+**Permiso:** `canSyncQueues()`
 
 Ejecuta `Artisan::call('sync:queue-stats', ['--days' => $days, '--pbx' => $activePbxId])`. El parámetro `days` viene del formulario (opciones: 1, 7, 15, 30 días).
 
@@ -502,7 +548,7 @@ Estos endpoints sirven al componente Alpine.js `userManager()` embebido en `pbx/
 
 | Método | Ruta | Permiso | Descripción | Efecto |
 |---|---|---|---|---|
-| `index()` | `GET /tarifas` | Lectura libre | Muestra las 3 tarifas en cards editables | — |
+| `index()` | `GET /tarifas` | `canViewRates()` | Muestra las 3 tarifas en cards editables | — |
 | `update(Request)` | `POST /tarifas` | `canEditRates()` | Actualiza valores de tarifas con `Setting::updateOrCreate()` | Llama `Call::clearPricesCache()` para invalidar la cache estática del modelo Call |
 
 > **Impacto:** Cambiar una tarifa afecta **inmediatamente** el cálculo de costos en todo el dashboard. Los costos no se almacenan en la BD — se calculan dinámicamente por el accessor `getCostAttribute()` del modelo `Call`.

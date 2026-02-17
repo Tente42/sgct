@@ -12,6 +12,11 @@ class SettingController extends Controller
      */
     public function index()
     {
+        // Verificar permiso para ver tarifas
+        if (!auth()->user()->canViewRates()) {
+            abort(403, 'No tienes permiso para ver las tarifas.');
+        }
+
         $settings = Setting::all();
         return view('settings.index', compact('settings'));
     }

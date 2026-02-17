@@ -107,27 +107,29 @@ Estas rutas están disponibles incluso sin central seleccionada — son las que 
 | GET | `/configuracion` | ExtensionController@index | extension.index | Listado de extensiones |
 | GET | `/export-pdf` | CdrController@descargarPDF | cdr.pdf | Descarga PDF con DomPDF |
 | GET | `/exportar-excel` | CdrController@exportarExcel | calls.export | Descarga Excel con Maatwebsite |
-| GET | `/tarifas` | SettingController@index | settings.index | Ver tarifas actuales |
+| GET | `/tarifas` | SettingController@index | settings.index | Ver tarifas (requiere `canViewRates`) |
 
 #### 4b. Acciones protegidas — Verificadas por permiso en el controlador
 
 | Método | URI | Controlador | Nombre | Permiso requerido |
 |---|---|---|---|---|
 | POST | `/sync` | CdrController@syncCDRs | cdr.sync | `canSyncCalls` |
+| POST | `/extension/sync` | ExtensionController@syncExtensions | extension.sync | `canSyncExtensions` |
+| GET | `/extension/sync-status` | ExtensionController@checkSyncStatus | extension.syncStatus | (polling AJAX) |
 | POST | `/extension/update` | ExtensionController@update | extension.update | `canEditExtensions` |
 | POST | `/extension/update-ips` | ExtensionController@updateIps | extension.updateIps | `canUpdateIps` |
 | POST | `/tarifas` | SettingController@update | settings.update | `canEditRates` |
+| GET | `/configuracion` | ExtensionController@index | extension.index | `canViewExtensions` |
+| GET | `/tarifas` | SettingController@index | settings.index | `canViewRates` |
+| GET | `/stats/kpi-turnos` | StatsController@index | stats.kpi | `canViewCharts` |
+| GET | `/stats/kpi-turnos/api` | StatsController@apiKpis | stats.api | `canViewCharts` |
+| POST | `/stats/kpi-turnos/sync` | StatsController@sincronizarColas | stats.sync | `canSyncQueues` |
+| GET | `/extension/forwarding` | ExtensionController@getCallForwarding | extension.forwarding.get | `canEditExtensions` |
+| POST | `/extension/forwarding` | ExtensionController@updateCallForwarding | extension.forwarding.update | `canEditExtensions` |
 
 > **Nota de seguridad:** Los permisos no son middleware — se verifican dentro del controlador con `abort_unless($user->canX(), 403)`. Esto permite mostrar la vista (ej: listado de extensiones) sin el botón de edición a usuarios sin permiso.
 
-#### 4c. Desvíos de llamadas (Call Forwarding)
-
-| Método | URI | Controlador | Nombre | Descripción |
-|---|---|---|---|---|
-| GET | `/extension/forwarding` | ExtensionController@getCallForwarding | extension.forwarding.get | Obtiene config actual de desvío |
-| POST | `/extension/forwarding` | ExtensionController@updateCallForwarding | extension.forwarding.update | Actualiza desvío en PBX |
-
-#### 4d. Estadísticas de Colas
+#### 4c. Estadísticas de Colas
 
 | Método | URI | Controlador | Nombre | Descripción |
 |---|---|---|---|---|

@@ -34,6 +34,43 @@
                 </form>
                 <?php endif; ?>
             </div>
+
+            <?php if(Auth::user()->canSyncExtensions()): ?>
+            <div id="syncButtonContainer">
+                <button type="button" id="syncButton" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded shadow-md"
+                   onclick="iniciarSyncExtensiones(this)">
+                    <i class="fas fa-cloud-download-alt"></i> Sincronizar Ahora
+                </button>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        
+        <div id="extensionSyncBanner" class="hidden bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-3 rounded-lg relative mb-4" role="alert">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-sync fa-spin text-yellow-600 text-lg"></i>
+                <div>
+                    <strong class="font-bold">Sincronización en progreso</strong>
+                    <p class="text-sm" id="extensionSyncMessage">Los anexos se están sincronizando desde la central. Este proceso puede tardar unos minutos...</p>
+                </div>
+            </div>
+            <div class="mt-2 w-full bg-yellow-200 rounded-full h-1.5">
+                <div class="bg-yellow-500 h-1.5 rounded-full animate-pulse" style="width: 100%"></div>
+            </div>
+        </div>
+
+        
+        <div id="extensionSyncCompleteBanner" class="hidden bg-green-50 border border-green-300 text-green-800 px-4 py-3 rounded-lg relative mb-4" role="alert">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-check-circle text-green-600 text-lg"></i>
+                <div>
+                    <strong class="font-bold">¡Sincronización completada!</strong>
+                    <p class="text-sm" id="extensionSyncCompleteMessage">Los anexos han sido actualizados.</p>
+                    <a href="<?php echo e(route('extension.index')); ?>" class="text-sm font-semibold text-green-700 underline hover:text-green-900 mt-1 inline-block">
+                        <i class="fas fa-redo mr-1"></i>Recargar página para ver los cambios
+                    </a>
+                </div>
+            </div>
         </div>
 
         <?php if(session('success')): ?>
@@ -813,6 +850,146 @@
                 }
             }
         }
+    </script>
+
+    
+    <script>
+        // Función global para iniciar la sincronización via AJAX
+        function iniciarSyncExtensiones(btn) {
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            btn.innerHTML = '<i class="fas fa-sync fa-spin"></i> Sincronizando...';
+
+            // Mostrar banner de progreso inmediatamente
+            const banner = document.getElementById('extensionSyncBanner');
+            const completeBanner = document.getElementById('extensionSyncCompleteBanner');
+            if (banner) banner.classList.remove('hidden');
+            if (completeBanner) completeBanner.classList.add('hidden');
+
+            // Enviar petición AJAX
+            fetch('<?php echo e(route("extension.sync")); ?>', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '<?php echo e(csrf_token()); ?>',
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showSyncCompleted(data.message);
+                } else {
+                    showSyncError(data.message || 'Error desconocido');
+                }
+            })
+            .catch(err => {
+                showSyncError('Error de conexión. Intente nuevamente.');
+            });
+        }
+
+        function showSyncCompleted(message) {
+            const banner = document.getElementById('extensionSyncBanner');
+            const completeBanner = document.getElementById('extensionSyncCompleteBanner');
+            const completeMessage = document.getElementById('extensionSyncCompleteMessage');
+            const syncButton = document.getElementById('syncButton');
+
+            if (banner) banner.classList.add('hidden');
+            if (completeBanner) completeBanner.classList.remove('hidden');
+            if (completeMessage) completeMessage.textContent = message || 'Los anexos han sido actualizados.';
+            if (syncButton) {
+                syncButton.disabled = false;
+                syncButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                syncButton.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Sincronizar Ahora';
+            }
+
+            // Ocultar indicador del sidebar directamente (sin depender del polling)
+            resetSidebarSyncIndicator();
+        }
+
+        function showSyncError(message) {
+            const banner = document.getElementById('extensionSyncBanner');
+            const syncMessage = document.getElementById('extensionSyncMessage');
+            const syncButton = document.getElementById('syncButton');
+
+            if (banner) {
+                banner.classList.remove('hidden', 'bg-yellow-50', 'border-yellow-300', 'text-yellow-800');
+                banner.classList.add('bg-red-50', 'border-red-300', 'text-red-800');
+                const icon = banner.querySelector('i');
+                if (icon) {
+                    icon.classList.remove('fa-sync', 'fa-spin', 'text-yellow-600');
+                    icon.classList.add('fa-exclamation-triangle', 'text-red-600');
+                }
+                const strong = banner.querySelector('strong');
+                if (strong) strong.textContent = 'Error en sincronización';
+            }
+            if (syncMessage) syncMessage.textContent = message;
+            if (syncButton) {
+                syncButton.disabled = false;
+                syncButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                syncButton.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Sincronizar Ahora';
+            }
+
+            // Ocultar indicador del sidebar directamente
+            resetSidebarSyncIndicator();
+        }
+
+        // Función reutilizable para resetear el indicador de sincronización del sidebar
+        function resetSidebarSyncIndicator() {
+            const sMsg = document.getElementById('sidebarAnexosSyncMsg');
+            if (sMsg) {
+                sMsg.classList.add('hidden');
+                sMsg.classList.remove('bg-red-500', 'text-white');
+                sMsg.classList.add('bg-yellow-500', 'text-yellow-900');
+                sMsg.innerHTML = '<i class="fas fa-sync fa-spin mr-1"></i> Sincronizando anexos, espere...';
+            }
+        }
+
+        // Polling del estado de sincronización (para mostrar progreso y detectar syncs iniciadas por otros usuarios)
+        (function() {
+            const banner = document.getElementById('extensionSyncBanner');
+            const syncMessage = document.getElementById('extensionSyncMessage');
+            const syncButton = document.getElementById('syncButton');
+
+            if (!banner) return;
+
+            let pollInterval = null;
+
+            // Callback global para cuando el sidebar detecta sync completado
+            window.onExtensionSyncComplete = function(message) {
+                showSyncCompleted(message);
+            };
+
+            function checkStatus() {
+                fetch('<?php echo e(route("extension.syncStatus")); ?>')
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'syncing') {
+                            // Otro usuario o proceso inició sync — mostrar progreso
+                            banner.classList.remove('hidden');
+                            banner.classList.remove('bg-red-50', 'border-red-300', 'text-red-800');
+                            banner.classList.add('bg-yellow-50', 'border-yellow-300', 'text-yellow-800');
+                            if (syncMessage) syncMessage.textContent = data.message || 'Sincronizando...';
+                            if (syncButton) {
+                                syncButton.disabled = true;
+                                syncButton.classList.add('opacity-50', 'cursor-not-allowed');
+                                syncButton.innerHTML = '<i class="fas fa-sync fa-spin"></i> Sincronizando...';
+                            }
+                        } else if (data.status === 'completed') {
+                            showSyncCompleted(data.message);
+                        } else if (data.status === 'error') {
+                            showSyncError(data.message || 'Ocurrió un error.');
+                        }
+                        // Si 'idle', no hacer nada (dejar el estado actual del botón)
+                    })
+                    .catch(() => {});
+            }
+
+            // Verificar estado inmediatamente (por si otro usuario inició sync)
+            checkStatus();
+            // Polling cada 3 segundos para actualizar progreso
+            pollInterval = setInterval(checkStatus, 3000);
+        })();
     </script>
     <?php $__env->stopPush(); ?>
  <?php echo $__env->renderComponent(); ?>

@@ -508,9 +508,16 @@
                                         <div :style="form.role === 'admin' ? 'opacity:0.5;pointer-events:none;' : ''">
                                             <div style="background:#f8f9fa;padding:10px;border-radius:4px;margin-bottom:10px;">
                                                 <h5 style="font-size:0.85rem;color:#666;margin:0 0 8px;">
-                                                    <i class="fas fa-server" style="color:#e67e22;"></i> Acciones de API
+                                                    <i class="fas fa-sync-alt" style="color:#007bff;"></i> Sincronización
                                                 </h5>
                                                 <label class="perm-checkbox"><input type="checkbox" x-model="form.can_sync_calls"> Sincronizar Llamadas</label>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_sync_extensions"> Sincronizar Anexos</label>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_sync_queues"> Sincronizar Colas</label>
+                                            </div>
+                                            <div style="background:#f8f9fa;padding:10px;border-radius:4px;margin-bottom:10px;">
+                                                <h5 style="font-size:0.85rem;color:#666;margin:0 0 8px;">
+                                                    <i class="fas fa-server" style="color:#e67e22;"></i> Acciones de API
+                                                </h5>
                                                 <label class="perm-checkbox"><input type="checkbox" x-model="form.can_edit_extensions"> Editar Anexos</label>
                                                 <label class="perm-checkbox"><input type="checkbox" x-model="form.can_update_ips"> Actualizar IPs</label>
                                                 <label class="perm-checkbox"><input type="checkbox" x-model="form.can_manage_pbx"> Gestionar PBX</label>
@@ -521,13 +528,20 @@
                                                 </h5>
                                                 <label class="perm-checkbox"><input type="checkbox" x-model="form.can_edit_rates"> Editar Tarifas</label>
                                             </div>
+                                            <div style="background:#f8f9fa;padding:10px;border-radius:4px;margin-bottom:10px;">
+                                                <h5 style="font-size:0.85rem;color:#666;margin:0 0 8px;">
+                                                    <i class="fas fa-eye" style="color:#6366f1;"></i> Visualización de Secciones
+                                                </h5>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_view_charts"> Ver Gráficos y Colas</label>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_view_extensions"> Ver Anexos</label>
+                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_view_rates"> Ver Tarifas</label>
+                                            </div>
                                             <div style="background:#f8f9fa;padding:10px;border-radius:4px;">
                                                 <h5 style="font-size:0.85rem;color:#666;margin:0 0 8px;">
                                                     <i class="fas fa-file-alt" style="color:#27ae60;"></i> Reportes
                                                 </h5>
                                                 <label class="perm-checkbox"><input type="checkbox" x-model="form.can_export_pdf"> Exportar PDF</label>
                                                 <label class="perm-checkbox"><input type="checkbox" x-model="form.can_export_excel"> Exportar Excel</label>
-                                                <label class="perm-checkbox"><input type="checkbox" x-model="form.can_view_charts"> Ver Gráficos</label>
                                             </div>
                                         </div>
                                         <div x-show="form.role === 'admin'" style="background:#fff3cd;border:1px solid #ffc107;padding:10px;border-radius:4px;margin-top:10px;">
@@ -848,10 +862,11 @@
                 form: {
                     name: '', email: '', password: '', password_confirmation: '',
                     role: 'user',
-                    can_sync_calls: false, can_edit_extensions: false,
-                    can_update_ips: false, can_edit_rates: false,
-                    can_manage_pbx: false, can_export_pdf: true,
-                    can_export_excel: true, can_view_charts: true,
+                    can_sync_calls: false, can_sync_extensions: false, can_sync_queues: false,
+                    can_edit_extensions: false, can_update_ips: false,
+                    can_edit_rates: false, can_manage_pbx: false,
+                    can_export_pdf: true, can_export_excel: true,
+                    can_view_charts: true, can_view_extensions: true, can_view_rates: true,
                     allowed_pbx_ids: [],
                 },
 
@@ -891,10 +906,11 @@
                     this.form = {
                         name: '', email: '', password: '', password_confirmation: '',
                         role: 'user',
-                        can_sync_calls: false, can_edit_extensions: false,
-                        can_update_ips: false, can_edit_rates: false,
-                        can_manage_pbx: false, can_export_pdf: true,
-                        can_export_excel: true, can_view_charts: true,
+                        can_sync_calls: false, can_sync_extensions: false, can_sync_queues: false,
+                        can_edit_extensions: false, can_update_ips: false,
+                        can_edit_rates: false, can_manage_pbx: false,
+                        can_export_pdf: true, can_export_excel: true,
+                        can_view_charts: true, can_view_extensions: true, can_view_rates: true,
                         allowed_pbx_ids: [],
                     };
                     this.errors = {};
@@ -909,6 +925,8 @@
                         password: '', password_confirmation: '',
                         role: user.role,
                         can_sync_calls: user.can_sync_calls,
+                        can_sync_extensions: user.can_sync_extensions,
+                        can_sync_queues: user.can_sync_queues,
                         can_edit_extensions: user.can_edit_extensions,
                         can_update_ips: user.can_update_ips,
                         can_edit_rates: user.can_edit_rates,
@@ -916,6 +934,8 @@
                         can_export_pdf: user.can_export_pdf,
                         can_export_excel: user.can_export_excel,
                         can_view_charts: user.can_view_charts,
+                        can_view_extensions: user.can_view_extensions,
+                        can_view_rates: user.can_view_rates,
                         allowed_pbx_ids: [...(user.allowed_pbx_ids || [])],
                     };
                     this.errors = {};
@@ -1011,8 +1031,10 @@
 
                 updateRole() {
                     if (this.form.role === 'admin') {
-                        ['can_sync_calls','can_edit_extensions','can_update_ips','can_edit_rates',
-                         'can_manage_pbx','can_export_pdf','can_export_excel','can_view_charts'
+                        ['can_sync_calls','can_sync_extensions','can_sync_queues',
+                         'can_edit_extensions','can_update_ips','can_edit_rates',
+                         'can_manage_pbx','can_export_pdf','can_export_excel',
+                         'can_view_charts','can_view_extensions','can_view_rates'
                         ].forEach(p => this.form[p] = true);
                     }
                 },
@@ -1034,12 +1056,16 @@
                     if (user.is_admin) return [{text:'Todos', bg:'#d4edda', fg:'#155724'}];
                     const b = [];
                     if (user.can_sync_calls) b.push({text:'Sync', bg:'#cce5ff', fg:'#004085'});
+                    if (user.can_sync_extensions) b.push({text:'SyncExt', bg:'#cce5ff', fg:'#004085'});
+                    if (user.can_sync_queues) b.push({text:'SyncQ', bg:'#cce5ff', fg:'#004085'});
                     if (user.can_edit_extensions) b.push({text:'Ext', bg:'#e8daef', fg:'#6c3483'});
                     if (user.can_edit_rates) b.push({text:'Tar', bg:'#fdebd0', fg:'#e67e22'});
                     if (user.can_manage_pbx) b.push({text:'PBX', bg:'#fadbd8', fg:'#c0392b'});
                     if (user.can_export_pdf) b.push({text:'PDF', bg:'#f5b7b1', fg:'#922b21'});
                     if (user.can_export_excel) b.push({text:'XLS', bg:'#d5f5e3', fg:'#1e8449'});
                     if (user.can_view_charts) b.push({text:'Graf', bg:'#d6eaf8', fg:'#2874a6'});
+                    if (!user.can_view_extensions) b.push({text:'~~Ext~~', bg:'#eee', fg:'#999'});
+                    if (!user.can_view_rates) b.push({text:'~~Tar~~', bg:'#eee', fg:'#999'});
                     if (b.length === 0) b.push({text:'Solo lectura', bg:'#eee', fg:'#999'});
                     return b;
                 },
