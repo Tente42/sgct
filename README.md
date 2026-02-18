@@ -66,7 +66,7 @@ Panel de administración y monitoreo de llamadas para centrales telefónicas **G
 
 ---
 
-##  Instalación (recomendado usar CMD y no powershell)
+##  Instalación (recomendado usar CMD)
 
 ### 0. Editar PHP.ini
 
@@ -84,7 +84,6 @@ git clone https://github.com/tu-usuario/panel-gestion-llamadas.git
 cd panel-gestion-llamadas
 ```
 
-> En Linux/Mac la ruta sería `/opt/lampp/htdocs/`
 
 ### 2. Instalar dependencias de PHP
 
@@ -101,7 +100,7 @@ npm install
 ### 4. Configurar el archivo de entorno
 
 ```bash
-cp .env.example .env
+copy .env.example .env
 ```
 
 ### 5. Generar la clave de aplicación
@@ -543,7 +542,7 @@ npm run dev
 │   ├── configuracion.blade.php       # Gestión de extensiones/anexos
 │   ├── login.blade.php               # Login personalizado (standalone)
 │   ├── pdf_reporte.blade.php         # Template para exportación PDF (DomPDF)
-│   └── doom.blade.php                # Easter egg
+│   
 └── routes/
     ├── web.php                        # Rutas principales de la aplicación
     └── auth.php                       # Rutas de autenticación (Breeze)
