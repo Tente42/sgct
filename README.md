@@ -19,12 +19,15 @@ Panel de administración y monitoreo de llamadas para centrales telefónicas **G
 -  **Gestión de extensiones** con sincronización bajo demanda y actualización de IPs
 -  **Desvíos de llamadas** — Configura Call Forwarding directamente desde la interfaz
 -  **Gráficos y reportes** de llamadas entrantes, salientes y perdidas
--  **Estadísticas de colas (KPI)** — Volumen, abandono, ASA, rendimiento de agentes
+-  **Estadísticas de colas (KPI)** — Volumen, abandono, ASA, rendimiento de agentes, alertas automáticas por umbrales
+-  **Desvíos de llamadas** — Configura Call Forwarding (CFU, CFB, CFN) directamente desde la interfaz
 -  **Exportación a Excel/PDF** de reportes personalizados
 -  **Gestión de usuarios** con roles (Admin, Supervisor, Usuario) y permisos granulares
 -  **Tarifas configurables** — Precios por minuto según destino (celular, nacional, internacional)
+-  **Facturación automática** — Clasifica llamadas por tipo de destino chileno y calcula costos en CLP
 -  **Interfaz moderna** con Tailwind CSS y Alpine.js
 -  **Protección contra sincronizaciones simultáneas** mediante sistema de locks
+-  **Job en background** para sincronización asíncrona de datos PBX
 
 ---
 
@@ -41,6 +44,25 @@ Panel de administración y monitoreo de llamadas para centrales telefónicas **G
 | Central Grandstream | UCM con API habilitada |
 
 >  **Recomendado:** Usar [XAMPP](https://www.apachefriends.org/) como entorno de desarrollo local, ya que incluye Apache, PHP y MySQL preconfigurados.
+
+### Dependencias Principales (Composer)
+
+| Paquete | Versión | Propósito |
+|---------|---------|-----------|
+| `laravel/framework` | ^11.0 | Framework principal |
+| `laravel/breeze` | ^2.3 | Scaffolding de autenticación |
+| `barryvdh/laravel-dompdf` | ^3.1 | Generación de PDFs server-side |
+| `maatwebsite/excel` | ^3.1 | Export Excel con streaming (`FromQuery`) |
+
+### Dependencias Principales (NPM)
+
+| Paquete | Versión | Propósito |
+|---------|---------|-----------|
+| `alpinejs` | ^3.4.2 | Reactividad del lado del cliente |
+| `tailwindcss` | ^3.1.0 | Framework CSS utility-first |
+| `axios` | ^1.11.0 | Cliente HTTP con CSRF automático |
+| `chart.js` | 4.4.1 (CDN) | Gráficos interactivos (pie, line, bar, area) |
+| `font-awesome` | 6.5.2 (CDN) | Iconografía |
 
 ---
 
@@ -192,6 +214,20 @@ php artisan db:seed --class=UserSeeder
 
 Este comando creará los usuarios configurados en las variables de entorno (`ADMIN_*` y `USUARIO_*`).
 
+### Crear tarifas por defecto
+
+```bash
+php artisan db:seed --class=SettingSeeder
+```
+
+Crea las tarifas iniciales: celular ($80 CLP/min), nacional ($40 CLP/min), internacional ($500 CLP/min).
+
+### Ejecutar todos los seeders
+
+```bash
+php artisan db:seed
+```
+
 ---
 
 ##  Comandos Personalizados
@@ -243,18 +279,83 @@ Este comando:
 ### Sincronizar Extensiones
 
 ```bash
-# Sincronizar todas las extensiones
+# Sincronizar todas las extensiones (modo completo con detalles SIP)
 php artisan extensions:import --pbx=1
 
-# Sincronizar una extensión específica
+# Sincronizar en modo rápido (solo datos básicos, sin llamadas a getSIPAccount)
+php artisan extensions:import --pbx=1 --quick
+
+# Sincronizar una extensión específica (siempre modo completo)
 php artisan extensions:import 1001 --pbx=1
 ```
 
+Opciones disponibles:
+| Opción | Descripción |
+|--------|-------------|
+| `--pbx=ID` | **Obligatorio.** ID de la central PBX |
+| `--quick` | Modo rápido: solo datos básicos sin detalles SIP (~50 ext/seg vs ~5 ext/seg) |
+| `target` | Extensión específica a sincronizar (ej: `1001`). Opcional |
+
 Este comando:
-- Obtiene la lista de extensiones configuradas en la central
+- Obtiene la lista de extensiones configuradas en la central (`listUser`)
 - Sincroniza nombres, estados y configuraciones
-- Actualiza la información de forma inteligente (solo si hay cambios)
+- En modo completo, consulta `getSIPAccount` por cada extensión para obtener DND, permisos, contraseña SIP y max_contacts
+- Actualiza la información de forma inteligente (solo si hay cambios con `hasChanges()`)
 - Asocia las extensiones a la central especificada
+- Procesa en chunks de 50 con `gc_collect_cycles()` para controlar memoria
+
+### Sincronizar Estadísticas de Colas
+
+```bash
+# Sincronizar colas de los últimos 7 días
+php artisan sync:queue-stats --pbx=1
+
+# Sincronizar una cola específica
+php artisan sync:queue-stats --pbx=1 --queue=6500
+
+# Sincronizar un rango de fechas específico
+php artisan sync:queue-stats --pbx=1 --start-date=2026-01-01 --end-date=2026-01-31
+
+# Sincronizar los últimos 30 días
+php artisan sync:queue-stats --pbx=1 --days=30
+
+# Forzar resincronización (elimina datos existentes del período)
+php artisan sync:queue-stats --pbx=1 --force
+```
+
+Opciones disponibles:
+| Opción | Descripción |
+|--------|-------------|
+| `--pbx=ID` | **Obligatorio.** ID de la central PBX |
+| `--queue=XXXX` | Cola específica a sincronizar (ej: `6500`). Si no se indica, sincroniza todas |
+| `--days=N` | Días hacia atrás a sincronizar (default: `7`) |
+| `--start-date=YYYY-MM-DD` | Fecha inicio (sobreescribe `--days`) |
+| `--end-date=YYYY-MM-DD` | Fecha fin (default: hoy) |
+| `--force` | Elimina los datos existentes del período antes de resincronizar |
+
+Este comando:
+- Consulta el endpoint `queueapi` de la central Grandstream
+- Descarga el detalle de llamadas por cola (caller, agente, tiempos de espera/conversación)
+- Implementa deduplicación en 3 capas: batch en memoria, verificación en BD, y constraint catch
+- Filtra ~22% de registros duplicados que la API Grandstream retorna
+
+### Herramienta de Testing de API
+
+```bash
+# Menú interactivo de acciones disponibles
+php artisan api:test --pbx=1
+
+# Probar un endpoint específico
+php artisan api:test --pbx=1 --action=cdrapi --days=7
+
+# Probar cuenta SIP de una extensión
+php artisan api:test --pbx=1 --action=getSIPAccount --extension=1001
+
+# Probar colas
+php artisan api:test --pbx=1 --action=queueapi --queue=6500 --stats-type=calldetail
+```
+
+> **Nota:** Este comando (~4200 líneas) es una herramienta de desarrollo/debugging, no de producción. Contiene 16+ subcomandos para inspeccionar todos los endpoints de la PBX Grandstream.
 
 ### Sincronización desde la Web
 
@@ -354,52 +455,98 @@ npm run dev
 
 ```
 ├── app/
-│   ├── Console/Commands/           # Comandos Artisan personalizados
-│   │   ├── SyncCalls.php           # Sincronización de CDRs
-│   │   ├── ImportarExtensiones.php # Sincronización de extensiones
-│   │   ├── SyncQueueStats.php      # Sincronización de estadísticas de colas
-│   │   └── TestApiCommands.php     # Testing interactivo de la API Grandstream
-│   ├── Exports/                    # Exportaciones Excel
-│   │   └── CallsExport.php        # Exportación de llamadas a Excel
-│   ├── Http/Controllers/           # Controladores
-│   │   ├── CdrController.php       # Dashboard, reportes, sincronización CDR
-│   │   ├── ExtensionController.php # Gestión de extensiones y desvíos
-│   │   ├── PbxConnectionController.php # Gestión multi-central
-│   │   ├── UserController.php      # CRUD de usuarios + API modal
-│   │   ├── StatsController.php     # KPIs de colas de llamadas
-│   │   ├── SettingController.php   # Tarifas de llamadas
-│   │   ├── IPController.php        # Monitor de IPs en tiempo real
-│   │   ├── AuthController.php      # Login/Logout personalizado
-│   │   └── EstadoCentral.php       # Uptime de la central
-│   ├── Models/                     # Modelos Eloquent
-│   │   ├── Call.php                # Llamadas (CDR) — con Global Scope por PBX
-│   │   ├── Extension.php           # Extensiones — con Global Scope por PBX
-│   │   ├── PbxConnection.php       # Centrales PBX (relación N:M con User)
-│   │   ├── QueueCallDetail.php     # Detalles de colas — con Global Scope por PBX
-│   │   ├── User.php                # Usuarios (relación N:M con PbxConnection)
-│   │   └── Setting.php             # Configuración clave-valor (tarifas)
-│   ├── Services/                   # Servicios
-│   │   ├── GrandstreamService.php  # Conexión con API Grandstream UCM
-│   │   └── CallBillingAnalyzer.php # Análisis de facturación de llamadas
-│   └── Traits/                     # Traits reutilizables
-│       └── GrandstreamTrait.php    # Wrapper del servicio Grandstream
+│   ├── Console/Commands/              # Comandos Artisan personalizados
+│   │   ├── Concerns/
+│   │   │   └── ConfiguresPbx.php      # Trait compartido: resolución de central PBX en CLI
+│   │   ├── SyncCalls.php              # Sincronización de CDRs (calls:sync)
+│   │   ├── ImportarExtensiones.php    # Sincronización de extensiones (extensions:import)
+│   │   ├── SyncQueueStats.php         # Sincronización de estadísticas de colas (sync:queue-stats)
+│   │   └── TestApiCommands.php        # Testing interactivo de la API Grandstream (api:test)
+│   ├── Exports/                       # Exportaciones Excel
+│   │   └── CallsExport.php           # Exportación de llamadas a Excel (FromQuery + streaming)
+│   ├── Http/
+│   │   ├── Controllers/               # Controladores
+│   │   │   ├── Concerns/
+│   │   │   │   └── ProcessesCdr.php   # Trait: consolidación de segmentos CDR
+│   │   │   ├── Auth/                  # Controladores de autenticación (Breeze)
+│   │   │   ├── AuthController.php     # Login/Logout personalizado
+│   │   │   ├── CdrController.php      # Dashboard, reportes, sincronización CDR
+│   │   │   ├── EstadoCentral.php      # Estado/uptime de la central
+│   │   │   ├── ExtensionController.php# Gestión de extensiones y desvíos
+│   │   │   ├── IPController.php       # Monitor de IPs en tiempo real
+│   │   │   ├── PbxConnectionController.php # Gestión multi-central + wizard sync
+│   │   │   ├── ProfileController.php  # Perfil de usuario (Breeze)
+│   │   │   ├── SettingController.php  # Tarifas de llamadas
+│   │   │   ├── StatsController.php    # KPIs de colas de llamadas
+│   │   │   └── UserController.php     # CRUD de usuarios + API JSON para modal
+│   │   ├── Middleware/                # Middleware personalizados
+│   │   │   ├── AdminMiddleware.php    # Bloquea no-admin (alias: admin)
+│   │   │   └── CheckPbxSelected.php   # Requiere central seleccionada (alias: pbx.selected)
+│   │   └── Requests/
+│   │       └── ProfileUpdateRequest.php
+│   ├── Jobs/
+│   │   └── SyncPbxDataJob.php         # Job background para sincronización (1h timeout)
+│   ├── Models/                        # Modelos Eloquent
+│   │   ├── Call.php                   # Llamadas (CDR) — con Global Scope por PBX
+│   │   ├── Extension.php             # Extensiones — con Global Scope por PBX
+│   │   ├── PbxConnection.php         # Centrales PBX (modelo central multi-tenant)
+│   │   ├── QueueCallDetail.php       # Detalles de colas — con Global Scope por PBX
+│   │   ├── Setting.php               # Configuración clave-valor (tarifas)
+│   │   └── User.php                  # Usuarios con roles y 12 permisos booleanos
+│   ├── Providers/
+│   │   └── AppServiceProvider.php     # Binding dinámico de GrandstreamService
+│   ├── Services/                      # Servicios
+│   │   ├── GrandstreamService.php    # Cliente API Grandstream (challenge/login/cookie)
+│   │   └── CallBillingAnalyzer.php   # Clasificador de llamadas facturables (5 criterios)
+│   ├── Traits/                        # Traits reutilizables
+│   │   └── GrandstreamTrait.php      # Wrapper del servicio para controladores
+│   └── View/Components/
+│       ├── AppLayout.php             # Layout autenticado
+│       └── GuestLayout.php           # Layout invitados
 ├── database/
-│   ├── migrations/                 # Migraciones de BD
-│   │   └── ...                     # ~20 migraciones incluyendo pivot table
-│   └── seeders/                    # Seeders de datos iniciales
-│       ├── UserSeeder.php          # Crea admin + usuario desde .env
-│       ├── SettingSeeder.php       # Tarifas por defecto
-│       └── PbxConnectionSeeder.php # Central de ejemplo
-├── resources/views/                # Vistas Blade
-│   ├── layouts/                    # Layouts principales (app, guest, sidebar)
-│   ├── pbx/                        # Selector de centrales + gestión usuarios (modal)
-│   │   ├── index.blade.php         # Lista centrales + modal usuarios (Alpine.js)
-│   │   └── setup.blade.php         # Configuración inicial / sincronización
-│   ├── users/                      # Vistas standalone de usuarios (CRUD)
-│   ├── stats/                      # KPIs de colas
-│   └── ...                         # Dashboard, configuración, gráficos, etc.
+│   ├── migrations/                    # Migraciones de BD (~22 migraciones)
+│   │   ├── create_users_table.php
+│   │   ├── create_calls_table.php
+│   │   ├── create_extensions_table.php
+│   │   ├── create_settings_table.php
+│   │   ├── create_pbx_connections_table.php
+│   │   ├── create_queue_call_details_table.php
+│   │   ├── create_pbx_connection_user_table.php  # Tabla pivot N:M
+│   │   └── ...                        # + migraciones de campos adicionales
+│   └── seeders/                       # Seeders de datos iniciales
+│       ├── DatabaseSeeder.php         # Seeder principal
+│       ├── UserSeeder.php             # Crea admin + usuario desde .env
+│       ├── SettingSeeder.php          # Tarifas por defecto (80/40/500 CLP)
+│       └── PbxConnectionSeeder.php    # Central de ejemplo
+├── resources/views/                   # Vistas Blade
+│   ├── layouts/                       # Layouts principales
+│   │   ├── app.blade.php             # Layout autenticado (con sidebar + sync indicator)
+│   │   ├── guest.blade.php           # Layout para invitados
+│   │   ├── sidebar.blade.php         # Sidebar fijo lateral izquierdo
+│   │   └── navigation.blade.php      # Navbar Breeze (no usado activamente)
+│   ├── pbx/                           # Gestión de centrales PBX
+│   │   ├── index.blade.php           # Lista centrales + modal usuarios (Alpine.js)
+│   │   └── setup.blade.php           # Wizard de configuración inicial / sincronización
+│   ├── users/                         # Vistas standalone de usuarios (CRUD)
+│   │   ├── index.blade.php           # Listado de usuarios
+│   │   ├── create.blade.php          # Crear usuario + permisos
+│   │   └── edit.blade.php            # Editar usuario + permisos
+│   ├── stats/                         # Estadísticas de colas
+│   │   └── kpi-turnos.blade.php      # Dashboard KPI de colas (Chart.js)
+│   ├── settings/
+│   │   └── index.blade.php           # Configuración de tarifas
+│   ├── auth/                          # Vistas de autenticación (Breeze)
+│   ├── errors/
+│   │   └── 419.blade.php             # Redirige a login (sesión expirada)
+│   ├── reporte.blade.php             # Vista principal: tabla de llamadas + KPIs
+│   ├── graficos.blade.php            # Gráficos de llamadas (pie + línea)
+│   ├── configuracion.blade.php       # Gestión de extensiones/anexos
+│   ├── login.blade.php               # Login personalizado (standalone)
+│   ├── pdf_reporte.blade.php         # Template para exportación PDF (DomPDF)
+│   └── doom.blade.php                # Easter egg
 └── routes/
-    └── web.php                     # Todas las rutas de la aplicación
+    ├── web.php                        # Rutas principales de la aplicación
+    └── auth.php                       # Rutas de autenticación (Breeze)
 ```
 
 ---
@@ -460,18 +607,22 @@ Los usuarios se gestionan desde la **página de centrales PBX** (`/pbx`) a trav�
 
 Cada usuario (que no sea admin) tiene permisos individuales:
 
-| Permiso | Descripción |
-|---------|-------------|
-| Sincronizar Llamadas | Ejecutar sincronización de CDRs desde la central |
-| Editar Extensiones | Modificar datos de extensiones en la central |
-| Actualizar IPs | Actualizar las IPs de los anexos |
-| Gestionar Centrales PBX | Crear, editar y eliminar centrales |
-| Editar Tarifas | Modificar precios por minuto |
-| Exportar PDF | Descargar reportes en PDF |
-| Exportar Excel | Descargar reportes en Excel |
-| Ver Gráficos | Acceder a la sección de estadísticas |
+| Permiso | Campo BD | Descripción |
+|---------|----------|-------------|
+| Sincronizar Llamadas | `can_sync_calls` | Ejecutar sincronización de CDRs desde la central |
+| Sincronizar Extensiones | `can_sync_extensions` | Ejecutar sincronización de extensiones/anexos |
+| Sincronizar Colas | `can_sync_queues` | Ejecutar sincronización de estadísticas de colas |
+| Editar Extensiones | `can_edit_extensions` | Modificar datos de extensiones y desvíos en la central |
+| Actualizar IPs | `can_update_ips` | Actualizar las IPs de los anexos |
+| Editar Tarifas | `can_edit_rates` | Modificar precios por minuto |
+| Gestionar Centrales PBX | `can_manage_pbx` | Crear, editar y eliminar centrales |
+| Exportar PDF | `can_export_pdf` | Descargar reportes en PDF |
+| Exportar Excel | `can_export_excel` | Descargar reportes en Excel |
+| Ver Gráficos | `can_view_charts` | Acceder a gráficos y KPIs de colas |
+| Ver Extensiones | `can_view_extensions` | Acceder a la sección de configuración de anexos |
+| Ver Tarifas | `can_view_rates` | Acceder a la sección de tarifas |
 
-> Los administradores tienen **todos los permisos** automáticamente.
+> Los administradores tienen **todos los permisos** automáticamente (`hasPermission()` siempre retorna `true`).
 
 ### Asignación de Centrales
 
@@ -488,12 +639,18 @@ Al crear o editar un usuario, el admin puede:
 - El archivo `.env` está excluido del repositorio (`.gitignore`)
 - Las contraseñas de usuario se almacenan con hash Bcrypt
 - Las contraseñas de las centrales PBX se encriptan en la base de datos (Laravel `encrypted` cast)
-- Protección CSRF en todos los formularios
+- Las contraseñas SIP (`secret`) están en `$hidden` para serialización JSON
+- Protección CSRF en todos los formularios (token meta tag + headers Axios/Fetch)
 - Sistema de locks para prevenir sincronizaciones simultáneas
 - **Control de acceso por central**: Los usuarios solo pueden acceder a las centrales que el admin les asigne
-- **Verificación de autorización**: Al seleccionar una central, el sistema verifica que el usuario tenga permiso
+- **Verificación de autorización**: Al seleccionar una central, el sistema verifica que el usuario tenga permiso (`canAccessPbx()`)
 - Middleware `admin` para proteger rutas administrativas
 - Middleware `pbx.selected` para asegurar que haya una central activa en sesión
+- **Global Scopes automáticos**: Filtro `WHERE pbx_connection_id = X` en Call, Extension y QueueCallDetail
+- **Rate limiting**: `throttle:10,1` — máximo 10 intentos de login por minuto por IP
+- **Regeneración de sesión**: Token regenerado en login/logout
+- **SSL configurable** por conexión PBX (`verify_ssl`)
+- **Protección SQL injection**: Whitelist en ORDER BY con `validateSort()`
 
 ---
 
