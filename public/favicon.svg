@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4F46E5"/>
+      <stop offset="100%" style="stop-color:#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="phone" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="100%" style="stop-color:#E0E7FF"/>
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="url(#bg)" />
+  <!-- Subtle shadow ring -->
+  <circle cx="32" cy="32" r="30" fill="none" stroke="#3730A3" stroke-width="1" opacity="0.3"/>
+  <!-- Headset arc -->
+  <path d="M18 36 C18 24, 46 24, 46 36" fill="none" stroke="url(#phone)" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Left earpiece -->
+  <rect x="14" y="33" width="7" height="12" rx="3.5" fill="url(#phone)"/>
+  <!-- Right earpiece -->
+  <rect x="43" y="33" width="7" height="12" rx="3.5" fill="url(#phone)"/>
+  <!-- Microphone arm -->
+  <path d="M43 42 C48 42, 48 46, 42 48 L38 49" fill="none" stroke="url(#phone)" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Microphone -->
+  <circle cx="37" cy="49.5" r="3" fill="url(#phone)"/>
+  <!-- Small signal waves -->
+  <path d="M27 20 C30 17, 34 17, 37 20" fill="none" stroke="#C7D2FE" stroke-width="1.5" stroke-linecap="round" opacity="0.7"/>
+  <path d="M24 17 C29 12, 35 12, 40 17" fill="none" stroke="#C7D2FE" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+</svg>
