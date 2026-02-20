@@ -79,19 +79,50 @@ class CdrController extends Controller
             : now()->subDays(30);
 
         try {
-            $response = $this->connectApi('cdrapi', [
-                'format' => 'json',
-                'startTime' => $start->format('Y-m-d\TH:i:s'),
-                'endTime' => now()->format('Y-m-d\TH:i:s'),
-                'minDur' => 0
-            ], 120);
+            $totalNuevas = 0;
+            $totalActualizadas = 0;
+            $maxPerRequest = 10000;
+            $pageStart = $start->copy();
+            $endTime = now();
 
-            if (!isset($response['cdr_root']) || empty($response['cdr_root'])) {
+            do {
+                $response = $this->connectApi('cdrapi', [
+                    'format' => 'json',
+                    'numRecords' => $maxPerRequest,
+                    'startTime' => $pageStart->format('Y-m-d\TH:i:s'),
+                    'endTime' => $endTime->format('Y-m-d\TH:i:s'),
+                    'minDur' => 0
+                ], 180);
+
+                if (!isset($response['cdr_root']) || empty($response['cdr_root'])) {
+                    break;
+                }
+
+                $calls = $response['cdr_root'];
+                $stats = $this->processCdrPackets($calls);
+                $totalNuevas += $stats['nuevas'];
+                $totalActualizadas += $stats['actualizadas'];
+
+                // Si recibimos el máximo, puede haber más → paginar
+                if (count($calls) >= $maxPerRequest) {
+                    $lastCall = end($calls);
+                    $lastStart = $lastCall['start'] ?? ($lastCall['main_cdr']['start'] ?? null);
+                    if ($lastStart) {
+                        $newStart = Carbon::parse($lastStart);
+                        if ($newStart->lessThanOrEqualTo($pageStart)) break;
+                        $pageStart = $newStart;
+                        continue;
+                    }
+                }
+
+                break;
+            } while (true);
+
+            if ($totalNuevas === 0 && $totalActualizadas === 0) {
                 return back()->with('success', 'Conexión exitosa. No hay llamadas nuevas.');
             }
 
-            $stats = $this->processCdrPackets($response['cdr_root']);
-            return back()->with('success', "Sincronización: {$stats['nuevas']} nuevas, {$stats['actualizadas']} actualizadas.");
+            return back()->with('success', "Sincronización: {$totalNuevas} nuevas, {$totalActualizadas} actualizadas.");
 
         } catch (\Exception $e) {
             return back()->with('error', 'Error técnico: ' . $e->getMessage());
