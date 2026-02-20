@@ -60,27 +60,74 @@ class SyncCalls extends Command
     }
 
     /**
-     * Procesar un mes de llamadas
+     * Procesar un mes de llamadas con paginación automática
+     * 
+     * La API cdrapi de Grandstream tiene un límite de registros por consulta.
+     * Si un mes tiene más registros que el límite, se pagina automáticamente
+     * desplazando la fecha de inicio al último registro recibido.
      */
     private function processMonth(Carbon $start, Carbon $end): void
     {
         $this->line(" Consultando: {$start->format('Y-m-d H:i')} -> {$end->format('Y-m-d H:i')}");
 
+        $pageStart = $start->copy();
+        $maxPerRequest = 10000;
+        $totalDelMes = 0;
+        $pagina = 1;
+
         try {
-            $data = $this->connectApi('cdrapi', [
-                'format' => 'json',
-                'startTime' => $start->format('Y-m-d\TH:i:s'),
-                'endTime' => $end->format('Y-m-d\TH:i:s'),
-                'minDur' => 0
-            ], 120);
+            do {
+                $data = $this->connectApi('cdrapi', [
+                    'format' => 'json',
+                    'numRecords' => $maxPerRequest,
+                    'startTime' => $pageStart->format('Y-m-d\TH:i:s'),
+                    'endTime' => $end->format('Y-m-d\TH:i:s'),
+                    'minDur' => 0
+                ], 180);
 
-            $calls = $data['cdr_root'] ?? [];
-            $count = count($calls);
-            $this->info("    Paquetes recibidos: {$count}");
+                $calls = $data['cdr_root'] ?? [];
+                $count = count($calls);
+                $totalDelMes += $count;
 
-            if ($count > 0) {
-                $this->processCdrPackets($calls);
+                if ($pagina > 1) {
+                    $this->info("    Página {$pagina}: {$count} paquetes (desde {$pageStart->format('Y-m-d H:i:s')})");
+                } else {
+                    $this->info("    Paquetes recibidos: {$count}");
+                }
+
+                if ($count > 0) {
+                    $this->processCdrPackets($calls);
+
+                    // Si recibimos el máximo, puede haber más → paginar
+                    if ($count >= $maxPerRequest) {
+                        // Obtener la fecha del último registro para continuar desde ahí
+                        $lastCall = end($calls);
+                        $lastStart = $lastCall['start'] ?? ($lastCall['main_cdr']['start'] ?? null);
+                        
+                        if ($lastStart) {
+                            $newStart = Carbon::parse($lastStart);
+                            // Evitar loop infinito: si la fecha no avanza, salir
+                            if ($newStart->lessThanOrEqualTo($pageStart)) {
+                                $this->warn("    ⚠ Fecha no avanza, deteniendo paginación para evitar loop infinito.");
+                                break;
+                            }
+                            $pageStart = $newStart;
+                            $pagina++;
+                            $this->info("    → Hay más registros, continuando desde {$pageStart->format('Y-m-d H:i:s')}...");
+                            sleep(1); // Pausa entre páginas para no saturar la API
+                            continue;
+                        }
+                    }
+                }
+
+                break; // No hay más páginas
+
+            } while (true);
+
+            if ($totalDelMes > 0 && $pagina > 1) {
+                $this->info("    Total del mes: {$totalDelMes} paquetes en {$pagina} páginas");
             }
+
         } catch (\Exception $e) {
             $this->error("    Error: " . $e->getMessage());
         }
