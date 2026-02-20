@@ -81,7 +81,7 @@ class CdrController extends Controller
         try {
             $totalNuevas = 0;
             $totalActualizadas = 0;
-            $maxPerRequest = 10000;
+            $maxPerRequest = 5000;
             $pageStart = $start->copy();
             $endTime = now();
 
