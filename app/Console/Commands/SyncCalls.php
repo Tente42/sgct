@@ -71,7 +71,7 @@ class SyncCalls extends Command
         $this->line(" Consultando: {$start->format('Y-m-d H:i')} -> {$end->format('Y-m-d H:i')}");
 
         $pageStart = $start->copy();
-        $maxPerRequest = 10000;
+        $maxPerRequest = 1000;
         $totalDelMes = 0;
         $pagina = 1;
 
