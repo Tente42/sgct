@@ -81,7 +81,7 @@ class CdrController extends Controller
         try {
             $totalNuevas = 0;
             $totalActualizadas = 0;
-            $maxPerRequest = 1000;
+            $maxPerRequest = 5000;
             $pageStart = $start->copy();
             $endTime = now();
 
@@ -109,8 +109,11 @@ class CdrController extends Controller
                     $lastStart = $lastCall['start'] ?? ($lastCall['main_cdr']['start'] ?? null);
                     if ($lastStart) {
                         $newStart = Carbon::parse($lastStart);
-                        if ($newStart->lessThanOrEqualTo($pageStart)) break;
-                        $pageStart = $newStart;
+                        if ($newStart->lessThanOrEqualTo($pageStart)) {
+                            $pageStart = $newStart->copy()->addSecond();
+                        } else {
+                            $pageStart = $newStart;
+                        }
                         continue;
                     }
                 }
@@ -348,15 +351,12 @@ class CdrController extends Controller
         $pbxId = session('active_pbx_id');
 
         foreach ($packets as $packet) {
-            $segments = array_filter(
-                $this->collectCdrSegments($packet),
-                fn($s) => !empty($s['disposition'])
-            );
+            $segments = $this->collectCdrSegments($packet);
 
             if (empty($segments)) continue;
 
             $data = $this->consolidateCdrSegments($segments);
-            if (empty($data)) continue;
+            if (empty($data) || empty($data['unique_id'])) continue;
 
             $call = Call::updateOrCreate(
                 ['pbx_connection_id' => $pbxId, 'unique_id' => $data['unique_id']],

@@ -8,12 +8,16 @@ namespace App\Http\Controllers\Concerns;
 trait ProcessesCdr
 {
     /**
-     * Recolectar todos los segmentos de un paquete CDR recursivamente
+     * Recolectar todos los segmentos de un paquete CDR recursivamente.
+     * Incluye cualquier nodo que tenga un campo 'start' (fecha de inicio)
+     * sin importar si tiene disposition o no — la consolidación se encarga
+     * de determinar el estado final de la llamada.
      */
     protected function collectCdrSegments(array $node): array
     {
         $collected = [];
 
+        // Un nodo con 'start' es un segmento válido de llamada
         if (isset($node['start']) && !empty($node['start'])) {
             $collected[] = $node;
         }
@@ -24,11 +28,19 @@ trait ProcessesCdr
             }
         }
 
+        // Si no encontramos segmentos con 'start' pero el nodo raíz tiene datos
+        // útiles (acctid/uniqueid), tratarlo como un segmento válido
+        if (empty($collected) && (isset($node['acctid']) || isset($node['uniqueid']))) {
+            $collected[] = $node;
+        }
+
         return $collected;
     }
 
     /**
-     * Consolidar segmentos en un solo registro de llamada
+     * Consolidar segmentos en un solo registro de llamada.
+     * Guarda TODAS las llamadas (internas, entrantes, salientes).
+     * La tarificación se calcula después por el accessor getCostAttribute.
      */
     protected function consolidateCdrSegments(array $segments): array
     {
@@ -39,7 +51,9 @@ trait ProcessesCdr
         $firstSrc = $first['src'] ?? '';
         $firstDst = $first['dst'] ?? '';
 
-        $esEntrante = $this->isExternalNumber($firstSrc) && $this->isExtension($firstDst);
+        $esEntrante = ($firstSrc !== '' && $firstDst !== '')
+            ? ($this->isExternalNumber($firstSrc) && $this->isExtension($firstDst))
+            : false;
 
         $data = [
             'unique_id' => null,

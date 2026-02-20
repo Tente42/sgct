@@ -72,7 +72,7 @@ class SyncCalls extends Command
         $this->line(" Consultando: {$start->format('Y-m-d H:i')} -> {$end->format('Y-m-d H:i')}");
 
         $pageStart = $start->copy();
-        $maxPerRequest = 1000;
+        $maxPerRequest = 5000;
         $totalDelMes = 0;
         $pagina = 1;
 
@@ -109,8 +109,16 @@ class SyncCalls extends Command
                             $newStart = Carbon::parse($lastStart);
                             // Evitar loop infinito: si la fecha no avanza, salir
                             if ($newStart->lessThanOrEqualTo($pageStart)) {
-                                $this->warn("    ⚠ Fecha no avanza, deteniendo paginación para evitar loop infinito.");
-                                break;
+                                // Avanzar 1 segundo para no quedarse pegado en el mismo timestamp
+                                $pageStart = $newStart->copy()->addSecond();
+                                if ($pageStart->greaterThanOrEqualTo($end)) {
+                                    $this->warn("    ⚠ Fin de rango alcanzado.");
+                                    break;
+                                }
+                                $pagina++;
+                                $this->info("    → Misma fecha, avanzando +1s a {$pageStart->format('Y-m-d H:i:s')}...");
+                                sleep(1);
+                                continue;
                             }
                             $pageStart = $newStart;
                             $pagina++;
@@ -146,7 +154,6 @@ class SyncCalls extends Command
 
         foreach ($calls as $cdrPacket) {
             $segments = $this->collectCdrSegments($cdrPacket);
-            $segments = array_filter($segments, fn($s) => !empty($s['disposition']));
 
             if (empty($segments)) {
                 $bar->advance();
@@ -154,7 +161,7 @@ class SyncCalls extends Command
             }
 
             $consolidated = $this->consolidateCdrSegments(array_values($segments));
-            if (empty($consolidated)) {
+            if (empty($consolidated) || empty($consolidated['unique_id'])) {
                 $bar->advance();
                 continue;
             }

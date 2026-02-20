@@ -363,11 +363,10 @@ class PbxConnectionController extends Controller
 
                 foreach ($cdrPackets as $cdrPacket) {
                     $segments = $this->collectCdrSegments($cdrPacket);
-                    $segments = array_filter($segments, fn($s) => !empty($s['disposition']));
                     if (empty($segments)) continue;
 
                     $consolidated = $this->consolidateCdrSegments(array_values($segments));
-                    if (empty($consolidated)) continue;
+                    if (empty($consolidated) || empty($consolidated['unique_id'])) continue;
 
                     Call::withoutGlobalScope('current_pbx')->updateOrCreate(
                         [
@@ -385,8 +384,13 @@ class PbxConnectionController extends Controller
                     $lastStart = $lastCall['start'] ?? ($lastCall['main_cdr']['start'] ?? null);
                     if ($lastStart) {
                         $newStart = Carbon::parse($lastStart);
-                        if ($newStart->lessThanOrEqualTo($pageStart)) break; // evitar loop infinito
-                        $pageStart = $newStart;
+                        if ($newStart->lessThanOrEqualTo($pageStart)) {
+                            // Avanzar 1 segundo para no quedarse pegado
+                            $pageStart = $newStart->copy()->addSecond();
+                            if ($pageStart->greaterThanOrEqualTo($endDate)) break;
+                        } else {
+                            $pageStart = $newStart;
+                        }
                         $pagina++;
                         continue;
                     }
