@@ -31,3 +31,4 @@ ESTRUCTURA_QUEUEAPI.md
 # SQLite databases
 *.sqlite
 *.sqlite-journal
+/storage/framework/views/*.php
