@@ -15,6 +15,7 @@ use Carbon\Carbon;
 class PbxConnectionController extends Controller
 {
     use GrandstreamTrait;
+    use \App\Http\Controllers\Concerns\ProcessesCdr;
 
     /**
      * Lista todas las centrales PBX
@@ -299,11 +300,12 @@ class PbxConnectionController extends Controller
 
     /**
      * Sincronizar llamadas por chunks (AJAX - Solo Admin)
-     * Recibe un año y mes para sincronizar
+     * Recibe un año y mes para sincronizar.
+     * Usa ProcessesCdr trait (misma lógica que el comando calls:sync)
+     * con paginación automática vía numRecords.
      */
     public function syncCalls(Request $request, PbxConnection $pbx): JsonResponse
     {
-        // Sin límite de tiempo para sincronización larga
         set_time_limit(0);
         ini_set('max_execution_time', '0');
         ini_set('memory_limit', '1024M');
@@ -317,26 +319,16 @@ class PbxConnectionController extends Controller
                 'sync_message' => "Sincronizando llamadas de {$month}/{$year}..."
             ]);
 
-            // Configurar la conexión para este PBX
             $this->setPbxConnection($pbx);
 
-            // Verificar conexión
             if (!$this->testConnection()) {
                 return response()->json(['success' => false, 'message' => 'Error de conexión'], 500);
             }
 
-            // Calcular rango del mes
             $startDate = Carbon::create($year, $month, 1)->startOfMonth();
-            $endDate = $startDate->copy()->endOfMonth();
-            
-            // Para el mes actual, sincronizar solo hasta ayer (evitar datos incompletos del día actual)
-            $yesterday = Carbon::yesterday()->endOfDay();
-            if ($endDate->greaterThan($yesterday)) {
-                $endDate = $yesterday;
-            }
+            $endDate = $startDate->copy()->endOfMonth()->min(Carbon::now());
 
-            // No sincronizar si el rango completo es futuro
-            if ($startDate->greaterThan($yesterday)) {
+            if ($startDate->greaterThan(Carbon::now())) {
                 return response()->json([
                     'success' => true,
                     'message' => 'Mes futuro, saltando',
@@ -347,28 +339,34 @@ class PbxConnectionController extends Controller
 
             $pbx->update(['sync_message' => "Obteniendo CDRs de {$startDate->format('d/m/Y')} a {$endDate->format('d/m/Y')}..."]);
 
-            $response = $this->connectApi('cdrapi', [
-                'format' => 'json',
-                'startTime' => $startDate->format('Y-m-d\TH:i:s'),
-                'endTime' => $endDate->format('Y-m-d\TH:i:s'),
-                'minDur' => 0
-            ], 180);
+            // Paginación automática
+            $maxPerRequest = 5000;
+            $pageStart = $startDate->copy();
+            $totalCount = 0;
+            $pagina = 1;
 
-            $cdrPackets = $response['cdr_root'] ?? [];
-            $count = 0;
+            do {
+                $response = $this->connectApi('cdrapi', [
+                    'format' => 'json',
+                    'numRecords' => $maxPerRequest,
+                    'startTime' => $pageStart->format('Y-m-d\TH:i:s'),
+                    'endTime' => $endDate->format('Y-m-d\TH:i:s'),
+                    'minDur' => 0
+                ], 180);
 
-            if (!empty($cdrPackets)) {
-                $pbx->update(['sync_message' => "Procesando " . count($cdrPackets) . " paquetes CDR..."]);
+                $cdrPackets = $response['cdr_root'] ?? [];
+                $batchCount = count($cdrPackets);
+
+                if ($batchCount === 0) break;
+
+                $pbx->update(['sync_message' => "Procesando {$batchCount} paquetes CDR (página {$pagina})..."]);
 
                 foreach ($cdrPackets as $cdrPacket) {
-                    // Recolectar todos los segmentos del paquete (igual que SyncCalls command)
                     $segments = $this->collectCdrSegments($cdrPacket);
                     $segments = array_filter($segments, fn($s) => !empty($s['disposition']));
-
                     if (empty($segments)) continue;
 
-                    // Consolidar segmentos en un registro de llamada
-                    $consolidated = $this->consolidateCallData(array_values($segments));
+                    $consolidated = $this->consolidateCdrSegments(array_values($segments));
                     if (empty($consolidated)) continue;
 
                     Call::withoutGlobalScope('current_pbx')->updateOrCreate(
@@ -378,16 +376,31 @@ class PbxConnectionController extends Controller
                         ],
                         $consolidated
                     );
-                    $count++;
+                    $totalCount++;
                 }
-            }
 
-            $pbx->update(['sync_message' => "Mes {$month}/{$year}: {$count} llamadas"]);
+                // Si recibimos el máximo, puede haber más → paginar
+                if ($batchCount >= $maxPerRequest) {
+                    $lastCall = end($cdrPackets);
+                    $lastStart = $lastCall['start'] ?? ($lastCall['main_cdr']['start'] ?? null);
+                    if ($lastStart) {
+                        $newStart = Carbon::parse($lastStart);
+                        if ($newStart->lessThanOrEqualTo($pageStart)) break; // evitar loop infinito
+                        $pageStart = $newStart;
+                        $pagina++;
+                        continue;
+                    }
+                }
+
+                break; // No hay más páginas
+            } while (true);
+
+            $pbx->update(['sync_message' => "Mes {$month}/{$year}: {$totalCount} llamadas"]);
 
             return response()->json([
                 'success' => true,
-                'message' => "{$count} llamadas sincronizadas para {$month}/{$year}",
-                'count' => $count,
+                'message' => "{$totalCount} llamadas sincronizadas para {$month}/{$year}",
+                'count' => $totalCount,
                 'hasMore' => $month < 12
             ]);
 
@@ -395,145 +408,6 @@ class PbxConnectionController extends Controller
             $pbx->update(['sync_message' => 'Error: ' . $e->getMessage()]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
-    }
-
-    /**
-     * Recolectar todos los segmentos de un paquete CDR recursivamente
-     */
-    private function collectCdrSegments(array $node): array
-    {
-        $collected = [];
-
-        // Si este nodo tiene 'start', es un segmento válido
-        if (isset($node['start']) && !empty($node['start'])) {
-            $collected[] = $node;
-        }
-
-        // Buscar sub_cdr anidados
-        foreach ($node as $key => $value) {
-            if (is_array($value) && (str_starts_with($key, 'sub_cdr') || $key === 'main_cdr')) {
-                $collected = array_merge($collected, $this->collectCdrSegments($value));
-            }
-        }
-
-        return $collected;
-    }
-
-    /**
-     * Consolidar segmentos en un solo registro de llamada
-     */
-    private function consolidateCallData(array $segments): array
-    {
-        if (empty($segments)) return [];
-
-        $first = $segments[0];
-        $firstSrc = $first['src'] ?? '';
-        $firstDst = $first['dst'] ?? '';
-
-        // Determinar tipo de llamada
-        $esEntrante = $this->esExterno($firstSrc) && $this->esAnexo($firstDst);
-
-        $data = [
-            'unique_id' => null,
-            'start_time' => null,
-            'answer_time' => null,
-            'source' => null,
-            'destination' => null,
-            'dstanswer' => null,
-            'duration' => 0,
-            'billsec' => 0,
-            'disposition' => 'NO ANSWER',
-            'action_type' => null,
-            'lastapp' => null,
-            'channel' => null,
-            'dst_channel' => null,
-            'src_trunk_name' => null,
-            'caller_name' => null,
-            'call_type' => $esEntrante ? 'inbound' : 'outbound',
-        ];
-
-        foreach ($segments as $seg) {
-            $src = $seg['src'] ?? '';
-            $dst = $seg['dst'] ?? '';
-
-            // Capturar datos más tempranos/relevantes
-            if (!$data['start_time'] || ($seg['start'] ?? '') < $data['start_time']) {
-                $data['start_time'] = $seg['start'] ?? null;
-            }
-            $data['unique_id'] ??= $seg['acctid'] ?? $seg['uniqueid'] ?? null;
-            $data['caller_name'] ??= $seg['caller_name'] ?? null;
-
-            // Campos detallados
-            $data['action_type'] ??= $seg['action_type'] ?? null;
-            $data['lastapp'] ??= $seg['lastapp'] ?? null;
-            $data['channel'] ??= $seg['channel'] ?? null;
-            $data['dst_channel'] ??= $seg['dstchannel'] ?? null;
-            $data['src_trunk_name'] ??= $seg['src_trunk_name'] ?? null;
-            
-            // Capturar answer_time si existe
-            if (!empty($seg['answer']) && $seg['answer'] !== '0000-00-00 00:00:00') {
-                $data['answer_time'] ??= $seg['answer'];
-            }
-            
-            // Capturar dstanswer
-            if (!empty($seg['dstanswer'])) {
-                $data['dstanswer'] ??= $seg['dstanswer'];
-            }
-
-            // Sumar tiempos
-            $data['duration'] += (int)($seg['duration'] ?? 0);
-            $data['billsec'] += (int)($seg['billsec'] ?? 0);
-
-            // Determinar origen/destino según tipo
-            if ($esEntrante) {
-                $data['source'] ??= $this->esAnexo($dst) ? $dst : null;
-                $data['destination'] ??= $this->esExterno($src) ? $src : null;
-            } else {
-                $data['source'] ??= $this->esAnexo($src) ? $src : null;
-                $data['destination'] ??= $dst ?: null;
-            }
-
-            // Si hay billsec > 0, fue contestada
-            if ((int)($seg['billsec'] ?? 0) > 0) {
-                $data['disposition'] = 'ANSWERED';
-            }
-        }
-
-        // Valores por defecto
-        $data['source'] ??= $firstSrc ?: 'Desconocido';
-        $data['destination'] ??= $firstDst ?: 'Desconocido';
-        $data['unique_id'] ??= md5($data['start_time'] . $data['source'] . $data['destination']);
-
-        // Determinar disposition si no fue ANSWERED
-        if ($data['disposition'] !== 'ANSWERED') {
-            foreach ($segments as $seg) {
-                $disp = strtoupper($seg['disposition'] ?? '');
-                if (str_contains($disp, 'BUSY')) {
-                    $data['disposition'] = 'BUSY';
-                    break;
-                } elseif (str_contains($disp, 'FAILED')) {
-                    $data['disposition'] = 'FAILED';
-                }
-            }
-        }
-
-        return $data;
-    }
-
-    /**
-     * Verificar si es un anexo/extensión interno (3-4 dígitos)
-     */
-    private function esAnexo(string $num): bool
-    {
-        return preg_match('/^\d{3,4}$/', $num) === 1;
-    }
-
-    /**
-     * Verificar si es número externo
-     */
-    private function esExterno(string $num): bool
-    {
-        return strlen($num) > 4 || str_starts_with($num, '+') || str_starts_with($num, '9');
     }
 
     /**
@@ -607,20 +481,4 @@ class PbxConnectionController extends Controller
         $this->getGrandstreamService()->setConnectionFromModel($pbx);
     }
 
-    /**
-     * Determinar el tipo de llamada basado en el destino
-     */
-    private function determineCallType(string $destination): string
-    {
-        if (strlen($destination) <= 4) {
-            return 'Interna';
-        }
-        if (preg_match('/^9/', $destination)) {
-            return 'Celular';
-        }
-        if (preg_match('/^00/', $destination)) {
-            return 'Internacional';
-        }
-        return 'Nacional';
-    }
 }
