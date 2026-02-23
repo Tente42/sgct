@@ -41,15 +41,25 @@ trait ProcessesCdr
      * Consolidar segmentos en un solo registro de llamada.
      * Guarda TODAS las llamadas (internas, entrantes, salientes).
      * La tarificación se calcula después por el accessor getCostAttribute.
+     * 
+     * NOTA: La API Grandstream puede devolver main_cdr con campos vacíos ("")
+     * y los valores reales en sub_cdr_*. Usamos empty() en vez de ??= para
+     * evitar que strings vacíos bloqueen los valores reales de sub-segmentos.
      */
     protected function consolidateCdrSegments(array $segments): array
     {
         if (empty($segments)) return [];
 
         $segments = array_values($segments);
-        $first = $segments[0];
-        $firstSrc = $first['src'] ?? '';
-        $firstDst = $first['dst'] ?? '';
+
+        // Determinar src/dst desde el primer segmento que tenga valores reales
+        $firstSrc = '';
+        $firstDst = '';
+        foreach ($segments as $seg) {
+            if (empty($firstSrc) && !empty($seg['src'])) $firstSrc = $seg['src'];
+            if (empty($firstDst) && !empty($seg['dst'])) $firstDst = $seg['dst'];
+            if ($firstSrc !== '' && $firstDst !== '') break;
+        }
 
         $esEntrante = ($firstSrc !== '' && $firstDst !== '')
             ? ($this->isExternalNumber($firstSrc) && $this->isExtension($firstDst))
@@ -76,49 +86,100 @@ trait ProcessesCdr
             'userfield' => null,
         ];
 
+        // Tracking para duración: si hay main_cdr con totales, usarlos en vez de sumar
+        $hasMainCdrTotals = false;
+        $mainCdrDuration = 0;
+        $mainCdrBillsec = 0;
+
         foreach ($segments as $seg) {
             $src = $seg['src'] ?? '';
             $dst = $seg['dst'] ?? '';
 
             // Capturar datos más tempranos
-            if (!$data['start_time'] || ($seg['start'] ?? '') < $data['start_time']) {
-                $data['start_time'] = $seg['start'] ?? null;
+            $segStart = $seg['start'] ?? '';
+            if (!empty($segStart) && (!$data['start_time'] || $segStart < $data['start_time'])) {
+                $data['start_time'] = $segStart;
             }
-            $data['unique_id'] ??= $seg['acctid'] ?? $seg['uniqueid'] ?? null;
-            $data['caller_name'] ??= $seg['caller_name'] ?? null;
-            $data['recording_file'] ??= $seg['recordfiles'] ?? null;
+
+            // unique_id: priorizar uniqueid (ID Asterisk de la llamada) sobre acctid/AcctId (ID por segmento)
+            // Manejar ambas variantes de capitalización (acctid y AcctId)
+            if (empty($data['unique_id'])) {
+                $uniqueid = $seg['uniqueid'] ?? '';
+                $acctid = $seg['acctid'] ?? $seg['AcctId'] ?? '';
+                if (!empty($uniqueid)) {
+                    $data['unique_id'] = $uniqueid;
+                } elseif (!empty($acctid)) {
+                    $data['unique_id'] = $acctid;
+                }
+            }
+
+            // Campos de texto: usar empty() para que strings vacíos no bloqueen valores reales
+            if (empty($data['caller_name'])) {
+                $data['caller_name'] = !empty($seg['caller_name']) ? $seg['caller_name'] : null;
+            }
+            if (empty($data['recording_file'])) {
+                $data['recording_file'] = !empty($seg['recordfiles']) ? $seg['recordfiles'] : null;
+            }
 
             // Nuevos campos detallados
-            $data['action_type'] ??= $seg['action_type'] ?? null;
-            $data['lastapp'] ??= $seg['lastapp'] ?? null;
-            $data['channel'] ??= $seg['channel'] ?? null;
-            $data['dst_channel'] ??= $seg['dstchannel'] ?? null;
-            $data['src_trunk_name'] ??= $seg['src_trunk_name'] ?? null;
+            if (empty($data['action_type'])) {
+                $data['action_type'] = !empty($seg['action_type']) ? $seg['action_type'] : null;
+            }
+            if (empty($data['lastapp'])) {
+                $data['lastapp'] = !empty($seg['lastapp']) ? $seg['lastapp'] : null;
+            }
+            if (empty($data['channel'])) {
+                $data['channel'] = !empty($seg['channel']) ? $seg['channel'] : null;
+            }
+            if (empty($data['dst_channel'])) {
+                $data['dst_channel'] = !empty($seg['dstchannel']) ? $seg['dstchannel'] : null;
+            }
+            if (empty($data['src_trunk_name'])) {
+                $data['src_trunk_name'] = !empty($seg['src_trunk_name']) ? $seg['src_trunk_name'] : null;
+            }
             
             // Capturar userfield (clasificación UCM: Inbound, Outbound, Internal)
-            $data['userfield'] ??= $seg['userfield'] ?? null;
+            if (empty($data['userfield'])) {
+                $data['userfield'] = !empty($seg['userfield']) ? $seg['userfield'] : null;
+            }
 
             // Capturar answer_time si existe
-            if (!empty($seg['answer']) && $seg['answer'] !== '0000-00-00 00:00:00') {
-                $data['answer_time'] ??= $seg['answer'];
+            if (empty($data['answer_time']) && !empty($seg['answer']) && $seg['answer'] !== '0000-00-00 00:00:00') {
+                $data['answer_time'] = $seg['answer'];
             }
 
             // Capturar dstanswer (quien contestó)
-            if (!empty($seg['dstanswer'])) {
-                $data['dstanswer'] ??= $seg['dstanswer'];
+            if (empty($data['dstanswer']) && !empty($seg['dstanswer'])) {
+                $data['dstanswer'] = $seg['dstanswer'];
             }
 
-            // Sumar tiempos
-            $data['duration'] += (int)($seg['duration'] ?? 0);
-            $data['billsec'] += (int)($seg['billsec'] ?? 0);
+            // Detectar si este segmento es un main_cdr (tiene campos vacíos de identificación pero totales)
+            $esMainCdr = empty($seg['uniqueid'] ?? '') && empty($seg['acctid'] ?? '') && empty($seg['AcctId'] ?? '');
+            if ($esMainCdr && (int)($seg['duration'] ?? 0) > 0) {
+                $hasMainCdrTotals = true;
+                $mainCdrDuration = (int)($seg['duration'] ?? 0);
+                $mainCdrBillsec = (int)($seg['billsec'] ?? 0);
+            } else {
+                // Solo sumar duración de sub-segmentos (no de main_cdr para evitar duplicados)
+                $data['duration'] += (int)($seg['duration'] ?? 0);
+                $data['billsec'] += (int)($seg['billsec'] ?? 0);
+            }
 
             // Determinar origen/destino
             if ($esEntrante) {
-                $data['source'] ??= $this->isExtension($dst) ? $dst : null;
-                $data['destination'] ??= $this->isExternalNumber($src) ? $src : null;
+                if (empty($data['source']) && $this->isExtension($dst)) {
+                    $data['source'] = $dst;
+                }
+                if (empty($data['destination']) && $this->isExternalNumber($src)) {
+                    $data['destination'] = $src;
+                }
             } else {
-                $data['source'] ??= $this->isExtension($src) ? $src : null;
-                $data['destination'] ??= $dst ?: null;
+                if (empty($data['source']) && $this->isExtension($src)) {
+                    $data['source'] = $src;
+                }
+                if (empty($data['destination']) && !empty($dst)) {
+                    $data['destination'] = $dst;
+                }
             }
 
             if ((int)($seg['billsec'] ?? 0) > 0) {
@@ -126,10 +187,22 @@ trait ProcessesCdr
             }
         }
 
+        // Si hay totales de main_cdr, usarlos (son los correctos para toda la llamada)
+        if ($hasMainCdrTotals) {
+            $data['duration'] = $mainCdrDuration;
+            $data['billsec'] = $mainCdrBillsec;
+        }
+
         // Valores por defecto
-        $data['source'] ??= $firstSrc ?: 'Desconocido';
-        $data['destination'] ??= $firstDst ?: 'Desconocido';
-        $data['unique_id'] ??= md5($data['start_time'] . $data['source'] . $data['destination']);
+        if (empty($data['source'])) {
+            $data['source'] = $firstSrc ?: 'Desconocido';
+        }
+        if (empty($data['destination'])) {
+            $data['destination'] = $firstDst ?: 'Desconocido';
+        }
+        if (empty($data['unique_id'])) {
+            $data['unique_id'] = md5($data['start_time'] . $data['source'] . $data['destination']);
+        }
 
         // Determinar disposition final
         if ($data['disposition'] !== 'ANSWERED') {
@@ -141,6 +214,16 @@ trait ProcessesCdr
                 } elseif (str_contains($disp, 'FAILED')) {
                     $data['disposition'] = 'FAILED';
                 }
+            }
+        }
+
+        // Determinar call_type basado en userfield si está disponible
+        if (!empty($data['userfield'])) {
+            $uf = strtolower($data['userfield']);
+            if ($uf === 'inbound') {
+                $data['call_type'] = 'inbound';
+            } elseif ($uf === 'outbound') {
+                $data['call_type'] = 'outbound';
             }
         }
 
