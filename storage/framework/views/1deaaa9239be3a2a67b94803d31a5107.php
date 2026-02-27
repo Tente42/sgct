@@ -781,6 +781,8 @@
                 },
                 
                 async saveAll() {
+                    if (!confirm('Esta acción puede tardar varios minutos, ¿desea continuar?')) return;
+
                     this.isSaving = true;
                     this.errorMessage = '';
                     this.successMessage = '';
@@ -856,6 +858,8 @@
     <script>
         // Función global para iniciar la sincronización via AJAX
         function iniciarSyncExtensiones(btn) {
+            if (!confirm('Esta acción puede tardar varios minutos, ¿desea continuar?')) return;
+
             btn.disabled = true;
             btn.classList.add('opacity-50', 'cursor-not-allowed');
             btn.innerHTML = '<i class="fas fa-sync fa-spin"></i> Sincronizando...';

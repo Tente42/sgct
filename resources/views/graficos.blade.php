@@ -7,6 +7,12 @@
 
     <div class="w-full px-4 sm:px-6 lg:px-8 py-6">
 
+        <div class="mb-4">
+            <a href="{{ route('dashboard') }}" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded shadow-md">
+                <i class="fas fa-arrow-left"></i> Volver a Llamadas
+            </a>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             
             {{-- Gráfico de Torta --}}

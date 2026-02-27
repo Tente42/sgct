@@ -92,18 +92,6 @@
             </form>
         </div>
 
-        <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h4 class="font-semibold text-blue-800 mb-2">
-                <i class="fas fa-info-circle mr-1"></i>
-                Información
-            </h4>
-            <ul class="text-sm text-blue-700 space-y-1">
-                <li><strong>Celular:</strong> Números que empiezan con 9 (ej: 912345678)</li>
-                <li><strong>Fijo Nacional:</strong> Números fijos nacionales</li>
-                <li><strong>Internacional:</strong> Números con código de país (ej: +1, 00XX)</li>
-            </ul>
-        </div>
-
     </div>
  <?php echo $__env->renderComponent(); ?>
 <?php endif; ?>

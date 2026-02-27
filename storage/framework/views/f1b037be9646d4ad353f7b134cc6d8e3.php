@@ -487,33 +487,9 @@
         </div>
         <?php else: ?>
         <!-- Mensaje cuando no hay datos de agentes sincronizados -->
-        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
-            <div class="flex items-start">
-                <div class="flex-shrink-0">
-                    <i class="fas fa-exclamation-triangle text-yellow-400 text-2xl"></i>
-                </div>
-                <div class="ml-4">
-                    <h3 class="text-lg font-medium text-yellow-800">
-                        Datos de agentes no sincronizados
-                    </h3>
-                    <div class="mt-2 text-sm text-yellow-700">
-                        <p>Para ver el rendimiento de agentes, ejecuta el siguiente comando:</p>
-                        <code class="block mt-2 bg-yellow-100 p-2 rounded text-xs font-mono">
-                            php artisan sync:queue-stats --days=7
-                        </code>
-                        <p class="mt-2 text-xs">
-                            Este comando sincroniza los datos de <strong>queueapi</strong> a la base de datos local.
-                            Puedes programarlo en el cron para ejecutarse automáticamente.
-                        </p>
-                        <?php if(auth()->user() && auth()->user()->canSyncQueues()): ?>
-                        <button type="button" onclick="sincronizarColas()" 
-                                class="mt-3 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded text-sm transition-colors duration-200">
-                            <i class="fas fa-sync-alt me-1"></i>Sincronizar ahora
-                        </button>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </div>
+        <div class="bg-gray-50 border border-gray-200 rounded-lg p-6 mb-6 text-center">
+            <i class="fas fa-database text-gray-400 text-3xl mb-3"></i>
+            <p class="text-gray-500">No hay datos de agentes disponibles. Usa el botón <strong>Sincronizar Colas</strong> para obtenerlos.</p>
         </div>
         <?php endif; ?>
 
@@ -551,6 +527,9 @@
                                 <option value="7" selected>Últimos 7 días</option>
                                 <option value="15">Últimos 15 días</option>
                                 <option value="30">Últimos 30 días</option>
+                                <option value="90">Últimos 3 meses</option>
+                                <option value="180">Últimos 6 meses</option>
+                                <option value="365">Último año</option>
                             </select>
                             <div class="flex gap-3 justify-center">
                                 <button type="button" onclick="cerrarModalSync()" 
@@ -1026,6 +1005,8 @@
 
         // Sincronizar colas (abrir modal)
         function sincronizarColas() {
+            if (!confirm('Esta acción puede tardar varios minutos, ¿desea continuar?')) return;
+
             document.getElementById('modalSync').classList.remove('hidden');
             document.getElementById('syncFormContainer').classList.remove('hidden');
             document.getElementById('syncResultContainer').classList.add('hidden');

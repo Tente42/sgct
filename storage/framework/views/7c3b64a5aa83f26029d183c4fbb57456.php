@@ -17,17 +17,23 @@
 
     <div class="w-full px-4 sm:px-6 lg:px-8 py-6">
 
-        <div class="flex justify-between items-center mb-4">
+        <div class="flex items-center justify-between mb-4">
             <div>
                 <h3 class="text-lg font-bold text-gray-800"><i class="bi bi-telephone-inbound-fill me-2"></i>Dashboard de Control</h3>
                 <span class="text-gray-500 text-sm">Generado: <?php echo e(date('d/m/Y H:i')); ?></span>
             </div>
-            
+
+            <?php if(Auth::user()->canViewCharts()): ?>
+            <a href="<?php echo e(route('cdr.charts')); ?>" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow-md transition">
+                <i class="fas fa-chart-bar"></i> Gráficos
+            </a>
+            <?php endif; ?>
+
             <?php if(Auth::user()->canSyncCalls()): ?>
             <form action="<?php echo e(route('cdr.sync')); ?>" method="POST" class="inline">
                 <?php echo csrf_field(); ?>
                 <button type="submit" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded shadow-md"
-                   onclick="this.innerHTML='<i class=\'fas fa-sync fa-spin\'></i> Buscando...'; this.classList.add('opacity-50', 'cursor-not-allowed'); this.disabled=true; this.form.submit();">
+                   onclick="event.preventDefault(); if(confirm('Esta acción puede tardar varios minutos, ¿desea continuar?')){ this.innerHTML='<i class=\'fas fa-sync fa-spin\'></i> Buscando...'; this.classList.add('opacity-50', 'cursor-not-allowed'); this.disabled=true; this.form.submit(); }">
                     <i class="fas fa-cloud-download-alt"></i> Sincronizar Ahora
                 </button>
             </form>
@@ -148,7 +154,7 @@
                         </button> 
                         <?php endif; ?>
                         <?php if(Auth::user()->canExportExcel()): ?>
-                        <a href="<?php echo e(route('calls.export', request()->all())); ?>" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded text-center">
+                        <a href="<?php echo e(route('calls.export', array_merge(request()->all(), ['fecha_inicio' => request('fecha_inicio', $fechaInicio), 'fecha_fin' => request('fecha_fin', $fechaFin)]))); ?>" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded text-center">
                             <i class="fas fa-file-excel"></i> Excel
 
                         </a>
