@@ -13,8 +13,8 @@
 | `pbxConnection()` | public | BelongsTo | FK → `pbx_connections` |
 | `getPrices()` | protected static | array | Cache estática de tarifas: `['price_mobile' => 80, ...]`. Lee de BD una sola vez por request |
 | `clearPricesCache()` | public static | void | Invalida cache de tarifas. Llamado por `SettingController@update` |
-| `getCostAttribute()` | public | int | **Accessor `$call->cost`**: clasifica destino por regex chileno → aplica tarifa → `ceil(billsec/60) × tarifa`. Retorna 0 si `disposition ≠ ANSWERED` |
-| `getCallTypeAttribute()` | public | string | **Accessor `$call->call_type`**: Interna/Local/Celular/Nacional/Internacional según regex sobre `$this->destination` |
+| `getCostAttribute()` | public | int | **Accessor `$call->cost`**: clasifica destino por regex chileno (lógica invertida, default=internacional) → `ceil(billsec/60) × tarifa`. Retorna 0 si `disposition ≠ ANSWERED` |
+| `getCallTypeAttribute()` | public | string | **Accessor `$call->call_type`**: Interna/Local/Celular/Nacional/Internacional según regex chileno (default=Internacional) |
 
 ### app/Models/Extension.php — Extensiones SIP
 | Función | Vis. | Retorno | Descripción |
@@ -86,8 +86,9 @@
 | `buildCallQuery($request)` | private | Builder | Construye query con filtros: fecha, anexo, tipo_llamada, ordenamiento |
 | `validateSort($sort)` | private | string | Whitelist: start_time, source, destination, billsec, disposition, type, cost |
 | `applySorting($query, $sort, $dir)` | private | Builder | Aplica ORDER BY, con SQL custom para type y cost |
-| `getTypeSortSql()` | private | string | CASE WHEN con regex REGEXP para ordenar por tipo de llamada |
-| `getCostSortSql()` | private | string | CASE WHEN con regex REGEXP para ordenar por costo calculado |
+| `getTypeSortSql()` | private | string | CASE WHEN con regex REGEXP para ordenar por tipo de llamada (default=Internacional) |
+| `getCostSortSql()` | private | string | CASE WHEN con regex REGEXP para ordenar por costo calculado (default=internacional) |
+| `getCostSumSql()` | private | string | CASE WHEN con regex REGEXP para sumar costos (default=tarifa internacional) |
 | `processCdrPackets($calls)` | private | array | Procesa paquetes CDR de la API → consolida segmentos → updateOrCreate |
 
 ### app/Http/Controllers/ExtensionController.php — Gestión de Extensiones

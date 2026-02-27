@@ -697,11 +697,9 @@ switch ($filtros['tipo_llamada'] ?? 'all'):
 | `/^800\d+$/` | Local (toll-free) |
 | `/^600\d+$/` | Nacional (costo compartido) |
 | `/^9\d{8}$/` | Celular |
-| `/^(\+?56)9\d{8}$/` | Celular (con prefijo Chile) |
-| `/^(\+?56)?2\d{8}$/` | Nacional (Santiago) |
-| `/^(\+?56)?[3-8]\d{8}$/` | Nacional (regiones) |
-| `/^(\+\|00)/` y NO `/^(\+?56)/` | Internacional |
-| *(default)* | Nacional |
+| `/^(?:\+?56)?9\d{8}$/` | Celular (con/sin prefijo Chile) |
+| `/^(\+?56)?[2-8]\d{8}$/` | Nacional (fijo con/sin +56) |
+| *(default)* | **Internacional** (todo lo no reconocido como chileno) |
 
 ### Estilos
 

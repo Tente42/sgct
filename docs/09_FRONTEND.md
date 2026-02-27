@@ -187,7 +187,6 @@ Esta vista es el componente de navegación por defecto de Laravel Breeze. **No s
 │   Central UCM       │  ← Logo (bg-gray-900)
 ├─────────────────────┤
 │ 📞 Llamadas         │  ← Siempre visible
-│ 📊 Gráficos         │  ← @if canViewCharts()
 │ 🎯 Colas            │  ← @if canViewCharts()
 │ 👤 Anexos           │  ← Siempre visible
 │ 💰 Tarifas          │  ← Siempre visible
@@ -205,11 +204,12 @@ Esta vista es el componente de navegación por defecto de Laravel Breeze. **No s
 | Item | Ruta | Condición de Visibilidad |
 |---|---|---|
 | Llamadas | `route('dashboard')` | Siempre (autenticado) |
-| Gráficos | `route('cdr.charts')` | `Auth::user()->canViewCharts()` |
 | Colas | `route('stats.kpi-turnos')` | `Auth::user()->canViewCharts()` |
 | Anexos | `route('extension.index')` | Siempre |
 | Tarifas | `route('settings.index')` | Siempre |
 | Gestión Usuarios | `route('users.index')` | `Auth::user()->isAdmin()` |
+
+> **Nota:** El enlace "Gráficos" fue movido del sidebar a la vista principal de llamadas (`reporte.blade.php`) como un botón entre "Dashboard de Control" y "Sincronizar Ahora".
 
 #### Sección Inferior (siempre visible):
 - **Central activa**: Muestra `session('active_pbx_name')` con ícono de servidor verde
@@ -258,10 +258,11 @@ CdrController@index
 
 #### Secciones:
 
-**a) Header + Botón Sync:**
+**a) Header + Botones de Acción:**
 - Título "Dashboard de Control" con fecha de generación
-- Botón "Sincronizar Ahora" (POST a `route('cdr.sync')`) — Solo si `canSyncCalls()`
-- Al hacer clic: cambia texto a "Buscando..." con spinner, deshabilita botón
+- Botón "Gráficos" (indigo-600) — Solo si `canViewCharts()`. Redirige a `route('cdr.charts')`
+- Botón "Sincronizar Ahora" (POST a `route('cdr.sync')`) — Solo si `canSyncCalls()`. Muestra `confirm()` antes de ejecutar
+- Al hacer clic en Sincronizar: confirma con alerta, luego cambia texto a "Buscando..." con spinner, deshabilita botón
 
 **b) Tarjetas KPI (3 columnas):**
 | Tarjeta | Color | Dato |
@@ -277,7 +278,7 @@ CdrController@index
   - `internal` → Salientes (azul), `all` → Todas (gris), `external` → Entrantes (verde)
   - Cada botón es un `<button type="submit">` con name `tipo_llamada`
 - **Exportar PDF**: Botón rojo con `onclick="pedirTituloYDescargar()"` — Solo si `canExportPdf()`
-- **Exportar Excel**: Link verde a `route('calls.export', request()->all())` — Solo si `canExportExcel()`
+- **Exportar Excel**: Link verde a `route('calls.export')` con fechas por defecto (hoy) si no hay filtros activos — Solo si `canExportExcel()`
 - **Limpiar**: Botón gris que resetea a `url('/')`
 
 **d) Tabla de Registros CDR:**
@@ -312,7 +313,10 @@ CdrController@index
 
 #### Secciones:
 
-**a) 2 Gráficos (grid 2 columnas):**
+**a) Botón Volver:**
+- Botón "Volver a Llamadas" (gris) — Redirige a `route('dashboard')`
+
+**b) 2 Gráficos (grid 2 columnas):**
 | Gráfico | Tipo | Canvas ID | Datos |
 |---|---|---|---|
 | Llamadas por Estado | Pie | `graficoTorta` | `$pieChartLabels`/`$pieChartData` |
@@ -362,7 +366,7 @@ Estado del componente:
 
 **a) Header + Botones de Acción:**
 - Botón "Actualizar IPs": `POST route('extension.updateIps')` — Solo si `canUpdateIps()`
-- Botón "Sincronizar Ahora": Click dispara `iniciarSyncExtensiones()` (AJAX `POST` a `route('extension.sync')`) — Solo si `canSyncCalls()`. El botón se deshabilita y muestra spinner mientras la sincronización está en curso. La respuesta JSON indica éxito o error.
+- Botón "Sincronizar Ahora": Click muestra `confirm()` y luego dispara `iniciarSyncExtensiones()` (AJAX `POST` a `route('extension.sync')`) — Solo si `canSyncCalls()`. El botón se deshabilita y muestra spinner mientras la sincronización está en curso. La respuesta JSON indica éxito o error.
 
 **a.1) Banners de Sincronización (dinámicos):**
 - **Banner amarillo** (`#extensionSyncBanner`): Visible durante la sincronización. Muestra spinner animado y barra de progreso pulsante. Polling cada 3 segundos a `GET /extension/sync-status` para mostrar progreso extensión por extensión.
@@ -406,7 +410,7 @@ Estado del componente:
 | `parseDestType(value, destType)` | Mapea códigos PBX a tipos UI (`1`→extension, `5`→queue, `2`→custom) |
 | `confirmForwarding()` | Valida que destinos activos tengan valor |
 | `cancelForwarding()` | Restaura backup y vuelve a paso 1 |
-| `saveAll()` | POST datos del anexo a `route('extension.update')` + POST desvíos a `route('extension.forwarding.update')` (JSON), luego `window.location.reload()` |
+| `saveAll()` | Muestra `confirm()`, luego POST datos del anexo a `route('extension.update')` + POST desvíos a `route('extension.forwarding.update')` (JSON), luego `window.location.reload()` |
 
 ---
 
@@ -685,7 +689,6 @@ Misma estructura que `create.blade.php` con diferencias:
   - Texto "Precio en pesos por minuto"
   - Input readonly si `!canEditRates()`
 - Botón "Guardar Cambios" — Solo si `canEditRates()`
-- Panel informativo: tipos de llamada (Celular, Fijo Nacional, Internacional)
 
 ---
 
@@ -712,7 +715,7 @@ Misma estructura que `create.blade.php` con diferencias:
 
 **a) Header + Filtros:**
 - Título con última sincronización (diffForHumans)
-- Botón "Sincronizar Colas" (solo admin) → abre modal de sync
+- Botón "Sincronizar Colas" (solo admin) → muestra `confirm()` antes de abrir modal de sync
 - Filtros: Fecha desde/hasta, Cola (select), botón Filtrar
 
 **b) 5 Tarjetas KPI:**
@@ -761,10 +764,13 @@ Misma estructura que `create.blade.php` con diferencias:
 - Muestra: Agente, Intentos, Contestadas, Efectividad, Tiempo Total, Espera Promedio
 
 **Modal Sincronización:**
-- Select de días (1/7/15/30)
+- Select de días (1/7/15/30/90/180/365)
 - POST a `route('stats.sync-colas')` con `{days}`
 - Muestra resultado: registros insertados/omitidos
 - Auto-recarga si no hay registros nuevos
+
+**g.1) Mensaje sin datos de agentes:**
+- Cuando no hay datos de agentes sincronizados, se muestra un mensaje simple: "No hay datos de agentes disponibles. Usa el botón Sincronizar Colas para obtenerlos."
 
 ---
 
@@ -944,7 +950,7 @@ fetch(url, {
 | `extensionEditor()` | `configuracion.blade.php` | Componente Alpine.js completo extensiones |
 | `extensionEditor.openModal(data)` | `configuracion.blade.php` | Abre modal edición con datos |
 | `extensionEditor.goToStep2()` | `configuracion.blade.php` | Carga desvíos desde PBX (fetch) |
-| `extensionEditor.saveAll()` | `configuracion.blade.php` | Guarda extensión + desvíos (2 POSTs) |
+| `extensionEditor.saveAll()` | `configuracion.blade.php` | Muestra confirm() + guarda extensión + desvíos (2 POSTs) |
 | `extensionEditor.parseDestType()` | `configuracion.blade.php` | Mapea códigos PBX a UI (1→ext, 5→queue) |
 | `pbxManager()` | `pbx/index.blade.php` | Componente Alpine.js CRUD centrales |
 | `pbxManager.openCreateModal()` | `pbx/index.blade.php` | Abre modal crear central |
@@ -972,5 +978,5 @@ fetch(url, {
 | `userManager.getRoleBadge(user)` | `pbx/index.blade.php` | Genera badge del rol del usuario |
 | `mostrarAgentes(cola)` | `stats/kpi-turnos.blade.php` | Abre modal detalle agentes por cola |
 | `cerrarModal()` | `stats/kpi-turnos.blade.php` | Cierra modal agentes |
-| `sincronizarColas()` | `stats/kpi-turnos.blade.php` | Abre modal sincronización colas |
+| `sincronizarColas()` | `stats/kpi-turnos.blade.php` | Muestra confirm() + abre modal sincronización colas |
 | `ejecutarSincronizacion()` | `stats/kpi-turnos.blade.php` | POST sync colas con días seleccionados |

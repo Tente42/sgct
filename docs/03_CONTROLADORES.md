@@ -31,14 +31,18 @@
 
 **Flujo de procesamiento:**
 1. Construye query con `buildCallQuery()` aplicando todos los filtros
-2. **Cálculo de costos en SQL** (no PHP) usando `CASE WHEN` que replica la lógica del accessor `getCostAttribute()`:
+2. **Cálculo de costos en SQL** (no PHP) usando `CASE WHEN` que replica la lógica del accessor `getCostAttribute()` (lógica invertida: default = internacional):
    ```sql
    SUM(CASE WHEN billsec <= 3 THEN 0
             WHEN userfield != 'Outbound' THEN 0
             WHEN destination REGEXP '^[0-9]{3,4}$' THEN 0
             WHEN destination REGEXP '^800' THEN 0
             WHEN destination REGEXP '^9[0-9]{8}$' THEN CEIL(billsec/60) * $mobile_rate
-            ... END) as total_cost
+            WHEN destination REGEXP '^600' THEN CEIL(billsec/60) * $national_rate
+            WHEN destination REGEXP '^[2-8][0-9]{8}$' THEN CEIL(billsec/60) * $national_rate
+            WHEN destination REGEXP '^\+?56[2-8][0-9]{8}$' THEN CEIL(billsec/60) * $national_rate
+            ELSE CEIL(billsec/60) * $international_rate  -- default internacional
+            END) as total_cost
    ```
 3. Genera datos para gráfico de líneas (llamadas por día)
 4. Calcula totales: total llamadas, segundos, minutos facturables, costo total
@@ -85,6 +89,8 @@
 **Permiso:** `canExportExcel()`
 
 Delega a `CallsExport` (Maatwebsite). Usa `FromQuery` → **streaming desde cursor DB**, sin límite práctico de registros.
+
+**Manejo de fechas por defecto:** Si no se proporcionan filtros de fecha (ej: al acceder directamente sin filtrar), se usan las fechas del día actual como valores por defecto. Esto evita que se descarguen **todos** los registros históricos cuando no hay filtros activos.
 
 ---
 

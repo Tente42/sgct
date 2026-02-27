@@ -63,19 +63,17 @@ Calcula el **costo de la llamada** en CLP (pesos chilenos) basado en el destino 
 | Destino 3-4 dígitos (`/^\d{3,4}$/`) | Extensión interna — llamada entre anexos |
 | Destino empieza con `800` (`/^800/`) | Número toll-free Chile — sin costo para el llamante |
 
-**Clasificación por regex del destino chileno:**
+**Clasificación por regex del destino chileno (lógica invertida — se identifican patrones chilenos, todo lo demás es internacional):**
 
 | Patrón | Regex | Tarifa Aplicada | Tipo |
 |---|---|---|---|
 | Celular sin prefijo | `/^9\d{8}$/` | `price_mobile` | Celular |
-| Celular con +56 | `/^(\+?56)9\d{8}$/` | `price_mobile` | Celular |
-| Fijo Santiago sin prefijo | `/^2\d{8}$/` | `price_national` | Nacional |
-| Fijo Santiago con +56 | `/^(\+?56)2\d{8}$/` | `price_national` | Nacional |
-| Fijo Regiones sin prefijo | `/^[3-8]\d{8}$/` | `price_national` | Nacional |
-| Fijo Regiones con +56 | `/^(\+?56)[3-8]\d{8}$/` | `price_national` | Nacional |
+| Celular con +56 | `/^\+?569\d{8}$/` | `price_mobile` | Celular |
+| Fijo Chile con o sin +56 | `/^\+?56[2-8]\d{8}$/` o `/^[2-8]\d{8}$/` | `price_national` | Nacional |
 | Costo compartido 600 | `/^600\d+$/` | `price_national` | Nacional |
-| Internacional (no Chile) | `/^(\+|00)/` AND NOT `/^(\+?56)/` | `price_international` | Internacional |
-| **Cualquier otro destino** | Default fallback | `price_national` | Nacional |
+| **Cualquier otro destino** | Default fallback | `price_international` | **Internacional** |
+
+> **Decisión de diseño:** Se invirtió la lógica original para que el default sea internacional en vez de nacional. Esto resuelve el problema de números internacionales con formatos no estándar (ej: `18834664299862`) que no empiezan con `+` ni `00` pero son internacionales.
 
 **Fórmula de cálculo:**
 $$\text{costo} = \lceil \frac{\text{billsec}}{60} \rceil \times \text{tarifa\_por\_minuto}$$
@@ -86,15 +84,15 @@ $$\text{costo} = \lceil \frac{\text{billsec}}{60} \rceil \times \text{tarifa\_po
 
 #### `getCallTypeAttribute(): string`
 
-Determina el **tipo de llamada** según el número de destino. Usa los mismos patrones regex que `getCostAttribute`.
+Determina el **tipo de llamada** según el número de destino. Usa lógica invertida: identifica explícitamente los patrones chilenos conocidos y clasifica todo lo demás como internacional.
 
 | Retorno | Condición |
 |---|---|
-| `Interna` | Destino 3-4 dígitos |
-| `Celular` | Destino móvil chileno (9XXXXXXXX) |
-| `Nacional` | Destino fijo nacional, 600 o 800 |
-| `Internacional` | Prefijo + o 00 (no Chile) |
-| `Local` | Fallback por defecto |
+| `Interna` | Destino 3-4 dígitos (extensiones y servicios especiales como 131, 132) |
+| `Local` | Destino empieza con 800 (toll-free) |
+| `Celular` | Destino móvil chileno: 9XXXXXXXX o (+56)9XXXXXXXX — regex: `/^(?:\+?56)?9\d{8}$/` |
+| `Nacional` | Destino fijo nacional con/sin +56, o línea 600 |
+| `Internacional` | **Todo lo demás** (default) — cualquier formato no reconocido como chileno |
 
 ### Métodos Estáticos
 

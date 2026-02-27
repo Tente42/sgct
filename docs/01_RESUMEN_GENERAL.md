@@ -148,12 +148,12 @@ El sistema implementa **aislamiento de datos por central PBX** usando Eloquent G
 - **Listado paginado** (50 registros/página) con ordenamiento por columnas
 - **Filtros avanzados**: rango de fechas, anexo/origen, tipo de llamada (salientes/entrantes/todas)
 - **3 tarjetas KPI**: Total llamadas, Minutos facturables, Total a cobrar (CLP)
-- **Facturación chilena automática**: Clasificación por destino con regex específicos del mercado chileno
+- **Facturación chilena automática**: Clasificación por destino con regex específicos del mercado chileno (lógica invertida: lo no reconocido se clasifica como internacional)
   - Celular (9XXXXXXXX) — tarifa móvil
-  - Fijo Santiago (2XXXXXXXX) — tarifa nacional
-  - Fijo Regiones (3-8XXXXXXXX) — tarifa nacional
-  - 600/800 — gratuito o tarifa reducida
-  - Internacional (+XX / 00XX) — tarifa internacional
+  - Fijo Chile ([2-8]XXXXXXXX con o sin +56) — tarifa nacional
+  - 600 — tarifa nacional (costo compartido)
+  - 800 — gratuito (toll-free)
+  - Todo lo demás — tarifa internacional (default)
 - **Regla de gracia**: Llamadas ≤ 3 segundos no se cobran
 - **Redondeo al minuto**: `ceil(billsec / 60) * tarifa`
 - Sincronización incremental desde última llamada conocida (-1 hora de overlap)
