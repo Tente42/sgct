@@ -131,7 +131,7 @@ class Call extends Model
         $priceNational = $prices['price_national'] ?? 40;
         $priceInternational = $prices['price_international'] ?? 500;
 
-        $pricePerMinute = $priceNational; // Por defecto: fijo nacional
+        $pricePerMinute = $priceInternational; // Por defecto: internacional (cualquier formato no reconocido)
 
         // Línea 600 en Chile = Tarifa nacional (costo compartido, NO es gratis)
         if (preg_match('/^600\d+$/', $destination)) {
@@ -142,28 +142,12 @@ class Call extends Model
             $pricePerMinute = $priceMobile;
         }
         // Celular Chile con codigo pais: +569XXXXXXXX o 569XXXXXXXX
-        elseif (preg_match('/^(\+?56)9\d{8}$/', $destination)) {
+        elseif (preg_match('/^\+?569\d{8}$/', $destination)) {
             $pricePerMinute = $priceMobile;
         }
-        // Fijo RM con codigo pais: +562XXXXXXXX (2 + 8 digitos)
-        elseif (preg_match('/^(\+?56)2\d{8}$/', $destination)) {
+        // Fijo Chile con o sin codigo pais: (+56)?[2-8]XXXXXXXX
+        elseif (preg_match('/^\+?56[2-8]\d{8}$/', $destination) || preg_match('/^[2-8]\d{8}$/', $destination)) {
             $pricePerMinute = $priceNational;
-        }
-        // Fijo otras regiones con codigo pais: +56YYXXXXXXX (YY + 7 digitos, YY != 2 ni 9)
-        elseif (preg_match('/^(\+?56)[3-8]\d{8}$/', $destination)) {
-            $pricePerMinute = $priceNational;
-        }
-        // Fijo RM sin codigo pais: 2XXXXXXXX (2 + 8 digitos = 9 digitos)
-        elseif (preg_match('/^2\d{8}$/', $destination)) {
-            $pricePerMinute = $priceNational;
-        }
-        // Fijo otras regiones sin codigo pais: YYXXXXXXX (codigo area + 7 digitos)
-        elseif (preg_match('/^[3-8]\d{8}$/', $destination)) {
-            $pricePerMinute = $priceNational;
-        }
-        // Internacional: empieza con + o 00 (pero no es Chile +56)
-        elseif (preg_match('/^(\+|00)/', $destination) && !preg_match('/^(\+?56)/', $destination)) {
-            $pricePerMinute = $priceInternational;
         }
 
         // Calcular: minutos (redondeando hacia arriba) * precio
@@ -178,39 +162,27 @@ class Call extends Model
     {
         $destination = $this->destination;
 
-        // Llamada interna (3-4 digitos tipicamente)
+        // Llamada interna (3-4 dígitos: extensiones y servicios como 131, 132, etc.)
         if (preg_match('/^\d{3,4}$/', $destination)) {
             return 'Interna';
         }
-        // LLinea 800 = Local (sin cobro)
+        // Línea 800 = Local (sin cobro, toll-free)
         if (preg_match('/^800\d+$/', $destination)) {
             return 'Local';
         }
-        // Linea 600 = Nacional (con cobro)
+        // Línea 600 = Nacional (costo compartido)
         if (preg_match('/^600\d+$/', $destination)) {
             return 'Nacional';
         }
-        // Celular Chile: 9XXXXXXXX
-        if (preg_match('/^9\d{8}$/', $destination)) {
+        // Celular Chile: 9XXXXXXXX o (+56)9XXXXXXXX
+        if (preg_match('/^(?:\+?56)?9\d{8}$/', $destination)) {
             return 'Celular';
         }
-        // Celular Chile con codigo pais: +569XXXXXXXX o 569XXXXXXXX
-        if (preg_match('/^(\+?56)9\d{8}$/', $destination)) {
-            return 'Celular';
-        }
-        // Fijo RM: 2XXXXXXXX o +562XXXXXXXX
-        if (preg_match('/^(\+?56)?2\d{8}$/', $destination)) {
+        // Fijo Chile con o sin código país: (+56)?[2-8]XXXXXXXX
+        if (preg_match('/^\+?56[2-8]\d{8}$/', $destination) || preg_match('/^[2-8]\d{8}$/', $destination)) {
             return 'Nacional';
         }
-        // Fijo otras regiones: YYXXXXXXX o +56YYXXXXXXX
-        if (preg_match('/^(\+?56)?[3-8]\d{8}$/', $destination)) {
-            return 'Nacional';
-        }
-        // Internacional: empieza con + o 00 (pero no es Chile +56)
-        if (preg_match('/^(\+|00)/', $destination) && !preg_match('/^(\+?56)/', $destination)) {
-            return 'Internacional';
-        }
-        // Por defecto: Fijo Nacional
-        return 'Nacional';
+        // Todo lo demás = Internacional (cualquier formato no reconocido como chileno)
+        return 'Internacional';
     }
 }

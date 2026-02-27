@@ -291,8 +291,10 @@ class CdrController extends Controller
             WHEN destination REGEXP '^800' THEN 2
             WHEN destination REGEXP '^9[0-9]{8}$' THEN 3
             WHEN destination REGEXP '^\\\\+?569[0-9]{8}$' THEN 3
-            WHEN destination REGEXP '^(\\\\+|00)' AND destination NOT REGEXP '^\\\\+?56' THEN 5
-            ELSE 4
+            WHEN destination REGEXP '^600' THEN 4
+            WHEN destination REGEXP '^\\\\+?56[2-8][0-9]{8}$' THEN 4
+            WHEN destination REGEXP '^[2-8][0-9]{8}$' THEN 4
+            ELSE 5
         END {$dir}";
     }
 
@@ -323,7 +325,9 @@ class CdrController extends Controller
             WHEN destination REGEXP '^800' THEN 0
             WHEN destination REGEXP '^9[0-9]{8}$' THEN CEIL(billsec/60) * {$mobile}
             WHEN destination REGEXP '^\\\\+?569[0-9]{8}$' THEN CEIL(billsec/60) * {$mobile}
-            WHEN destination REGEXP '^(\\\\+|00)' AND destination NOT REGEXP '^\\\\+?56' THEN CEIL(billsec/60) * {$international}
+            WHEN destination REGEXP '^600' THEN CEIL(billsec/60) * {$national}
+            WHEN destination REGEXP '^\\\\+?56[2-8][0-9]{8}$' THEN CEIL(billsec/60) * {$national}
+            WHEN destination REGEXP '^[2-8][0-9]{8}$' THEN CEIL(billsec/60) * {$national}
             ELSE CEIL(billsec/60) * {$international}
         END) as total_cost";
     }
@@ -339,7 +343,9 @@ class CdrController extends Controller
             WHEN destination REGEXP '^800' THEN 0
             WHEN destination REGEXP '^9[0-9]{8}$' THEN CEIL(billsec/60) * {$mobile}
             WHEN destination REGEXP '^\\\\+?569[0-9]{8}$' THEN CEIL(billsec/60) * {$mobile}
-            WHEN destination REGEXP '^(\\\\+|00)' AND destination NOT REGEXP '^\\\\+?56' THEN CEIL(billsec/60) * {$international}
+            WHEN destination REGEXP '^600' THEN CEIL(billsec/60) * {$national}
+            WHEN destination REGEXP '^\\\\+?56[2-8][0-9]{8}$' THEN CEIL(billsec/60) * {$national}
+            WHEN destination REGEXP '^[2-8][0-9]{8}$' THEN CEIL(billsec/60) * {$national}
             ELSE CEIL(billsec/60) * {$international}
         END {$dir}";
     }
