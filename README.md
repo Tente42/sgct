@@ -80,8 +80,8 @@ Clona el proyecto dentro de la carpeta `htdocs` de XAMPP:
 
 ```bash
 cd C:\xampp\htdocs
-git clone https://github.com/tu-usuario/panel-gestion-llamadas.git
-cd panel-gestion-llamadas
+git clone https://github.com/tu-usuario/sgct.git
+cd sgct
 ```
 
 
@@ -126,11 +126,11 @@ Edita el archivo `.env` con los valores correspondientes a tu entorno:
 La variable `APP_URL` debe coincidir **exactamente** con la URL desde donde accedes a la aplicación:
 
 ```env
-# Si accedes desde: http://localhost/panel-gestion-llamadas
-APP_URL=http://localhost/panel-gestion-llamadas
+# Si accedes desde: http://localhost/sgct
+APP_URL=http://localhost/sgct
 
-# Si accedes desde otra PC en red: http://10.61.17.92/panel-gestion-llamadas
-APP_URL=http://10.61.17.92/panel-gestion-llamadas
+# Si accedes desde otra PC en red: http://10.61.17.92/sgct
+APP_URL=http://10.61.17.92/sgct
 
 # Si usas Virtual Host: http://panel-llamadas.local
 APP_URL=http://panel-llamadas.local
@@ -388,10 +388,10 @@ Edita el archivo `.env` y configura `APP_URL` según cómo vas a acceder:
 
 ```env
 # Si solo usas localhost:
-APP_URL=http://localhost/panel-gestion-llamadas
+APP_URL=http://localhost/sgct
 
 # Si accedes desde otra PC en la red (cambia la IP por la de tu servidor):
-APP_URL=http://10.61.17.92/panel-gestion-llamadas
+APP_URL=http://10.61.17.92/sgct
 ```
 
 >  **Importante:** Sin esta configuración, la sincronización fallará con error 404.
@@ -406,8 +406,8 @@ php artisan route:clear
 
 ### 4. Acceder a la aplicación
 
-- **Mismo PC:** `http://localhost/panel-gestion-llamadas`
-- **Otra PC en red:** `http://[IP-DEL-SERVIDOR]/panel-gestion-llamadas`
+- **Mismo PC:** `http://localhost/sgct`
+- **Otra PC en red:** `http://[IP-DEL-SERVIDOR]`
 
 > Gracias al archivo `.htaccess` en la raíz, ya no necesitas agregar `/public` a la URL.
 
