@@ -324,7 +324,7 @@ class CdrController extends Controller
             WHEN destination REGEXP '^9[0-9]{8}$' THEN CEIL(billsec/60) * {$mobile}
             WHEN destination REGEXP '^\\\\+?569[0-9]{8}$' THEN CEIL(billsec/60) * {$mobile}
             WHEN destination REGEXP '^(\\\\+|00)' AND destination NOT REGEXP '^\\\\+?56' THEN CEIL(billsec/60) * {$international}
-            ELSE CEIL(billsec/60) * {$national}
+            ELSE CEIL(billsec/60) * {$international}
         END) as total_cost";
     }
 
@@ -340,7 +340,7 @@ class CdrController extends Controller
             WHEN destination REGEXP '^9[0-9]{8}$' THEN CEIL(billsec/60) * {$mobile}
             WHEN destination REGEXP '^\\\\+?569[0-9]{8}$' THEN CEIL(billsec/60) * {$mobile}
             WHEN destination REGEXP '^(\\\\+|00)' AND destination NOT REGEXP '^\\\\+?56' THEN CEIL(billsec/60) * {$international}
-            ELSE CEIL(billsec/60) * {$national}
+            ELSE CEIL(billsec/60) * {$international}
         END {$dir}";
     }
 
